@@ -1,6 +1,7 @@
 from gevent import monkey
 
 monkey.patch_all()
+import sys
 import uuid
 import time
 import gevent
@@ -28,6 +29,7 @@ class TaskueRunner:
         tags: list = [],
         timeout: int = 3600,
         run_untaged_tasks: bool = True,
+        path: str = None,
         **kwargs
     ):
         """[summary]
@@ -46,6 +48,9 @@ class TaskueRunner:
         self.run_untaged_tasks = run_untaged_tasks
         self.status = RunnerStatus.READY
         self._redis = redis
+        if path:
+            sys.path.append(path)
+
 
     def _notify_task_update(self, task):
         self._redis.rpush(RedisKeys.TASK_EVENTS, pickle.dumps(task))

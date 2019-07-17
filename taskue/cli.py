@@ -29,16 +29,17 @@ def runner_group():
 @click.option("--redis-port", default=6379, help="redis port")
 @click.option("--tags", default="", help="comma seperated tags, ex: test1,test2")
 @click.option("--timeout", default=None, help="runner timeout in seconds")
+@click.option("--path", default=None, help="optional path to include")
 @click.option(
     "--run_untaged_tasks",
     default=True,
     help="flag to allow runner to run untaged tasks",
 )
-def runner(redis_host, redis_port, tags, timeout, run_untaged_tasks):
+def runner(redis_host, redis_port, tags, timeout, run_untaged_tasks, path):
     """Start a runner"""
     tags = tags.strip().split(",")
     redis_connection = Redis(redis_host, redis_port)
-    tkue = TaskueRunner(redis=redis_connection, tags=tags)
+    tkue = TaskueRunner(redis=redis_connection, tags=tags, timeout=timeout, run_untaged_tasks=run_untaged_tasks, path=path)
     tkue.start()
 
 
