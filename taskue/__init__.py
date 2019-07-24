@@ -1,286 +1,204 @@
-import sys
 import time
-import logging
-import uuid
 import pickle
-
-DEFAULT_QUEUE = "default"
-LOGGING_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
-logging.basicConfig(stream=sys.stdout, level=logging.INFO, format=LOGGING_FORMAT)
-
-
-class RedisKeys:
-    PENDING = "tr:pending"
-    QUEUE = "tr:queue:{0}"
-    TASK_EVENTS = "tr:events"
-    RUNNER = "tr:runner:{0}"
-    RUNNERS = "tr:runners"
-    WORKFLOW = "tr:workflow:{0}"
-    TASK = "tr:task:{0}"
+import sys
+from redis import Redis
+from taskue.utils import RedisKeys, logging
+from taskue.task import Task, TaskStatus
+from taskue.workflow import Workflow, WorkflowStatus
 
 
-class WorkflowStatus:
-    CREATED = "Created"
-    QUEUED = "Queued"
-    RUNNING = "Running"
-    PASSED = "Passed"
-    FAILED = "Failed"
-    DONE_STATES = [PASSED, FAILED]
+class Taskue:
+    def __init__(self, redis_conn: Redis):
+        self._redis = redis_conn
 
+    def _queue(self, obj):
+        self._redis.rpush(obj.rqueue, obj.uid)
 
-class WorkflowStageStatus:
-    RUNNING = "Running"
-    PASSED = "Passed"
-    FAILED = "Failed"
-    DONE_STATES = [PASSED, FAILED]
+    def _save(self, obj):
+        if isinstance(obj, Task) and obj.workflow_uid:
+            self._cache_task_status(obj)
+        self._redis.set(obj.rkey, obj.dump())
 
+    def _cache_task_status(self, task):
+        self._redis.hmset(
+            RedisKeys.CACHE.format(task.workflow_uid), {task.uid: task.status}
+        )
 
-class TaskStatus:
-    CREATED = "Created"
-    QUEUED = "Queued"
-    RESCHEDULED = "Rescheduled"
-    RUNNING = "Running"
-    PASSED = "Passed"
-    FAILED = "Failed"
-    TIMEOUT = "Timeout"
-    SKIPPED = "Skipped"
-    DONE_STATES = [PASSED, FAILED, TIMEOUT, SKIPPED]
-    FAILED_STATES = [FAILED, TIMEOUT]
-
-
-class RunnerStatus:
-    READY = "Ready"
-    BUSY = "Busy"
-    DEAD = "Dead"
-
-
-class RunnerItem:
-    def __init__(self, **kwargs):
-        self.uid = kwargs.get("uid")
-        self.status = kwargs.get("status", RunnerStatus.READY)
-        self.task_uid = kwargs.get("task_uid", None)
-        self.last_heartbeat = kwargs.get("task_uid", time.time())
-
-
-class TaskLogHander(logging.Handler):
-    def __init__(self, logs):
-        logging.Handler.__init__(self)
-        self._logs = logs
-        self.capture = False
-
-    def emit(self, record):
-        if self.capture:
-            self._logs.append(
-                dict(
-                    msg=(record.msg % record.args),
-                    level=record.levelname,
-                    timestamp=record.created,
-                )
-            )
-
-
-class TaskLogger:
-    def __init__(self):
-        self._logs = []
-        self.handler = TaskLogHander(self._logs)
-
-    def get_logs(self):
-        return list(self._logs)
-
-    def __enter__(self):
-        self.handler.capture = True
-        return self
-
-    def __exit__(self, type, value, traceback):
-        self.handler.capture = False
-        self._logs.clear()
-
-
-class Task:
-    def __init__(
-        self,
-        stage: int = 1,
-        retries: int = 1,
-        tag: str = DEFAULT_QUEUE,
-        timeout: int = 3600,
-        skip_on_failure: bool = False,
-    ):
-        """[summary]
-        
-        Keyword Arguments:
-            stage {int} -- stage number (default: {1})
-            retries {int} -- number of retries when task fail (default: {1})
-            tag {str} -- taged tasks run only on the runners that have same tag (default: {DEFAULT_QUEUE})
-            timeout {int} -- task timeout (default: {3600})
-            skip_on_failure {bool} -- skip this task if any task of the previous stage failed (default: {False})
+    def run(self, task: Task):
         """
-        self.uid = uuid.uuid4().hex
-        self.stage = stage
-        self.retries = retries
-        self.tag = tag
-        self.timeout = timeout
-        self.skip_on_failure = skip_on_failure
-        self.workload = None
-        self.result = None
-        self.logs = []
-        self.created_at = None
-        self.started_at = None
-        self.queued_at = None
-        self.executed_at = None
-        self.workflow_uid = None
-        self.runner_uid = None
-        self.rescheduled = 0
-        self.status = TaskStatus.CREATED
-
-    def execute(self, func, *args, **kwargs):
-        """[summary]
+        Runs signle task
         
         Arguments:
-            func  -- the func to call 
-        """
-        self.workload = pickle.dumps((func, args, kwargs))
-
-
-class WorkflowItem:
-    def __init__(self, **kwargs):
-        self.uid = kwargs.get("uid", None)
-        self.stages = kwargs.get("stages", [])
-        self.status = kwargs.get("status", WorkflowStatus.CREATED)
-        self.current_stage = kwargs.get("current_stage", 1)
-        self.created_at = kwargs.get("created_at", None)
-        self.started_at = kwargs.get("started_at", None)
-        self.done_at = kwargs.get("done_at", None)
-
-    def get_stage_status(self, stage):
-        stage_index = stage - 1
-        tasks_status = set(self.stages[stage_index].values())
-        if TaskStatus.QUEUED in tasks_status or TaskStatus.RUNNING in tasks_status:
-            return WorkflowStageStatus.RUNNING
-
-        if set(TaskStatus.FAILED_STATES).isdisjoint(tasks_status):
-            return WorkflowStageStatus.PASSED
-
-        return WorkflowStageStatus.FAILED
-
-    @property
-    def current_stage_tasks(self):
-        stage_index = self.current_stage - 1
-        return self.stages[stage_index].keys()
-
-    def update_task_status(self, task):
-        stage_index = task.stage - 1
-        self.stages[stage_index][task.uid] = task.status
-
-    def is_last_stage(self):
-        return self.current_stage == len(self.stages)
-
-    def update_status(self):
-        stages_status = []
-        for stage, _ in enumerate(self.stages):
-            stages_status.append(self.get_stage_status(stage))
-
-        if WorkflowStageStatus.RUNNING in stages_status:
-            return
-
-        if WorkflowStageStatus.FAILED in stages_status:
-            self.status = WorkflowStatus.FAILED
-        else:
-            self.status = WorkflowStatus.PASSED
-
-
-class Workflow:
-    def __init__(self, stages: list = []):
-        """Workflow class
-        
-        Keyword Arguments:
-            stages {list} -- list of tasks lists ex: [[t1, t2], [t3]] (default: {[]})
-        """
-        self.uid = uuid.uuid4().hex
-        self.status = WorkflowStatus.CREATED
-        self._stages = []
-        self.stages = stages
-        self.created_at = None
-        self.started_at = None
-        self.done_at = None
-
-    @property
-    def stages(self):
-        return self._stages
-
-    @stages.setter
-    def stages(self, stages):
-        self._stages = []
-        for stage in stages:
-            self.add_stage(stage)
-
-    def add_task(self, task: Task, stage: int = None):
-        """Add task to the workflow
-        
-        Arguments:
-            task {Task} -- task object
-        
-        Keyword Arguments:
-            stage {int} -- the stage of the task (default: {None})
-        
-        Raises:
-            StageDoesNotExist: raises if the passed stage doesn't exist
-        """
-        stage = stage or task.stage
-        stage_index = stage - 1
-
-        if stage_index not in range(len(self._stages)):
-            raise StageDoesNotExist(stage)
-
-        task.stage = stage
-        task.workflow_uid = self.uid
-        self._stages[stage_index].append(task)
-
-    def add_stage(self, tasks: list = []):
-        """Add stage to the workflow
-        
-        Arguments:
-            tasks {list} -- list of task objects
+            task {Task} -- Task object
         
         Returns:
-            int -- stage order
+            str -- Task uid
         """
-        self._stages.append([])
-        try:
-            stage = len(self._stages)
-            for task in tasks:
-                self.add_task(task, stage)
-        except:
-            self._stages.pop()
-            raise
-        return stage
+        task.status = TaskStatus.QUEUED
+        task.created_at = task.queued_at = time.time()
+        self._save(task)
+        self._queue(task)
+        return task.uid
 
-    def dump(self):
-        stages = []
-        tasks = []
-        for stage in self.stages:
-            tasks_dict = {}
+    def run_workflow(self, stages):
+        """
+        Run workflow
+        
+        Arguments:
+            stages {list} -- List of tasks objects
+        
+        Returns:
+            str -- Workflow uid
+        """
+        workflow = Workflow()
+        workflow.created_at = workflow.queued_at = time.time()
+        workflow.status = WorkflowStatus.QUEUED
+
+        for idx, stage in enumerate(stages):
+            workflow.add_stage()
             for task in stage:
-                task.created_at = self.created_at
-                tasks_dict[task.uid] = task.status
-                tasks.append(task)
-            stages.append(tasks_dict)
+                workflow.add_task(task, idx + 1)
+                self._save(task)
 
-        workflow = WorkflowItem(uid=self.uid, stages=stages, created_at=self.created_at)
-        return workflow.__dict__, tasks
+        self._save(workflow)
+        self._queue(workflow)
+        return workflow.uid
+
+    def get_task_info(self, uid):
+        """
+        Gets task info
+        
+        Arguments:
+            uid {str} -- Task uid
+
+        Returns:
+            Task -- Task object
+        """
+        blob = self._redis.get(RedisKeys.TASK.format(uid))
+        if not blob:
+            raise TaskNotFound(uid)
+        return pickle.loads(blob)
+
+    def get_workflow_info(self, uid):
+        """
+        Gets workflow info
+        
+        Arguments:
+            uid {str} -- Workflow uid
+        
+        Returns:
+            Workflow -- Workflow object
+        """
+        blob = self._redis.get(RedisKeys.WORKFLOW.format(uid))
+        if not blob:
+            raise WorkflowNotFound(uid)
+        return pickle.loads(blob)
+
+    def wait_for_task(self, uid, timeout=300):
+        """
+        Waits for task to finish
+        
+        Arguments:
+            uid {str} -- Task uid
+        
+        Keyword Arguments:
+            timeout {int} -- timeout in seconds (default: {300})
+        """
+        for _ in range(timeout):
+            task = self.get_task_info(uid)
+            if task.status in TaskStatus.DONE_STATES:
+                return task
+            else:
+                time.sleep(1)
+        else:
+            raise TimeoutException("Task", uid, timeout)
+
+    def wait_for_workflow(self, uid, timeout=300):
+        """
+        Waits for workflow to finish
+        
+        Arguments:
+            uid {str} -- Workflow uid
+        
+        Keyword Arguments:
+            timeout {int} -- timeout in seconds (default: {300})
+        """
+        for _ in range(timeout):
+            workflow = self.get_workflow_info(uid)
+            if workflow.status in WorkflowStatus.DONE_STATES:
+                return workflow
+            else:
+                time.sleep(1)
+        else:
+            raise TimeoutException("Workflow", uid, timeout)
+
+    def list_tasks(self):
+        """
+        List tasks
+        
+        Returns:
+            iter -- tasks iterator
+        """
+        return self._redis.scan_iter(RedisKeys.TASK.format("*"))
+
+    def list_workflows(self):
+        """
+        List workflows
+        
+        Returns:
+            iter -- workflows iterator
+        """
+        return self._redis.scan_iter(RedisKeys.WORKFLOW.format("*"))
+
+    def delete_task(self, uid):
+        """
+        Deletes task
+        
+        Arguments:
+            uid {str} -- Task uid
+        """
+        task = self.get_task_info(uid)
+        if task.workflow_uid:
+            raise RuntimeError()
+        self._redis.delete(task.rkey)
+
+    def delete_workflow(self, uid):
+        """
+        Deletes workflow
+        
+        Arguments:
+            uid {str} -- Workflow uid
+        """
+        workflow = self.get_workflow_info(uid)
+        for stage in workflow.stages:
+            for task_uid in stage:
+                self._redis.delete(RedisKeys.TASK.format(task_uid))
+        self._redis.delete(workflow.rkey)
 
 
-def decode_hash(hashobj):
-    decoded = dict()
-    for i in range(int(len(hashobj) / 2)):
-        value = hashobj.pop().decode()
-        key = hashobj.pop().decode()
-        decoded[key] = value
-    return decoded
-
-
-class StageDoesNotExist(Exception):
-    def __init__(self, stage):
-        self.stage = stage
+class TaskNotFound(Exception):
+    def __init__(self, uid):
+        self.uid = uid
 
     def __str__(self):
-        return "Stage {} doesn't exist, create it first".format(self.stage)
+        return "Task {} not found".format(self.uid)
+
+
+class WorkflowNotFound(Exception):
+    def __init__(self, uid):
+        self.uid = uid
+
+    def __str__(self):
+        return "Workflow {} not found".format(self.uid)
+
+
+class TimeoutException(Exception):
+    def __init__(self, resource, uid, timeout):
+        self.uid = uid
+        self.resource = resource
+        self.timeout = timeout
+
+    def __str__(self):
+        return "{} {} did not finish after {} seconds".format(
+            self.resource, self.uid, self.timeout
+        )

@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="taskue",
-    version="0.2",
+    version="0.3",
     author="Ahmed El-Sayed",
     author_email="ahmed.m.elsayed93@gmail.com",
     description="Multi stages task queue",
