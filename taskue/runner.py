@@ -1,181 +1,201 @@
 from gevent import monkey
 
 monkey.patch_all()
-import os
-import sys
-import uuid
+
 import time
-import gevent
-import signal
+import uuid
 import pickle
 import traceback
-from redis import Redis
-from redis import exceptions as redis_exceptions
-from taskue.utils import DEFAULT_QUEUE, RedisKeys, logging
-from taskue.task import Task, TaskStatus, TaskLogger
-from taskue.workflow import Workflow, WorkflowStatus, WorkflowStageStatus
+from signal import SIGINT, SIGKILL, SIGTERM
 
-tasklogger = TaskLogger()
-logger = logging.getLogger()
-logger.addHandler(tasklogger.handler)
+import gevent
+import redis
+
+from taskue import logging
+from taskue import Task, RunnerStatus, TaskStatus, Queue, Rediskey
+
+
+logger = logging.getLogger(name="Runner")
+
+HEARTBEAT_TIMEOUT = 10
+HEARTBEAT_MAX_DELAY = 5
 
 
 class TaskueRunner:
     def __init__(
         self,
-        redis: Redis,
-        tags: list = [],
+        redis_conn: redis.Redis,
+        name: str = None,
+        tags: tuple = None,
         timeout: int = 3600,
         run_untaged_tasks: bool = True,
-        path: str = None,
     ):
-        self.uid = uuid.uuid4().hex
-        self.tags = tags
+        self.uid = uuid.uuid4().hex[:5]
+        self.name = name or f"RUNNER-{self.uid}"
+        self.tags = tags or ()
         self.timeout = timeout
+        self.current_task = 0
+        self.status = RunnerStatus.IDEL
         self.run_untaged_tasks = run_untaged_tasks
-        self._redis = redis
-        self._exit = False
-        if path:
-            sys.path.append(path)
-
-    def _save(self, obj):
-        self._redis.set(obj.rkey, obj.dump())
-        if isinstance(obj, Task) and obj.workflow_uid:
-            self._cache_status(obj)
-
-    def _cache_status(self, task):
-        self._redis.hmset(
-            RedisKeys.CACHE.format(task.workflow_uid), {task.uid: task.status}
-        )
-
-    def _expire_cache(self, workflow_uid):
-        self._redis.expire(RedisKeys.CACHE.format(workflow_uid), 5)
-
-    def _queue(self, uid):
-        logging.info("Schduling task %s", uid)
-        task = self.get_task(uid)
-        task.status = TaskStatus.QUEUED
-        task.queued_at = time.time()
-        self._save(task)
-        self._redis.rpush(task.rqueue, task.uid)
-
-    def get_task(self, uid):
-        blob = self._redis.get(RedisKeys.TASK.format(uid))
-        return pickle.loads(blob)
-
-    def get_workflow(self, uid):
-        blob = self._redis.get(RedisKeys.WORKFLOW.format(uid))
-        return pickle.loads(blob)
+        self._queues = []
+        self._redis_conn = redis_conn
+        self._heartbeat_thread = None
+        self._stop_flag = False
 
     @property
-    def rqueues(self):
-        return set([RedisKeys.QUEUE.format(tag) for tag in self.tags])
+    def redis_key(self):
+        return Rediskey.RUNNER % self.uid
+
+    @property
+    def rstatus(self):
+        return self._redis_conn.hget(Rediskey.RUNNER % self.uid, "status").decode()
+
+    def _register(self):
+        self._redis_conn.hmset(
+            self.redis_key,
+            dict(
+                uid=self.uid,
+                name=self.name,
+                task=self.current_task,
+                status=RunnerStatus.IDEL,
+                timeout=self.timeout,
+                tags=",".join(self.tags),
+                run_untaged_tasks=int(self.run_untaged_tasks)
+            ),
+        )
+
+    def _load_task(self, uid):
+        blob = self._redis_conn.get(Rediskey.TASK % uid)
+        return pickle.loads(blob)
+
+    def _save(self, pipeline=None):
+        redis_conn = pipeline or self._redis_conn
+        redis_conn.hmset(self.redis_key, dict(status=self.status, task=self.current_task))
+
+    def _save_progress(self, task):
+        pipeline = self._redis_conn.pipeline()
+        task._save(pipeline, notify=True)
+        self._save(pipeline)
+        pipeline.execute()
+
+    def _send_heartbeat(self, timeout=None):
+        timeout = (timeout or HEARTBEAT_TIMEOUT) + HEARTBEAT_MAX_DELAY
+        self._redis_conn.set(Rediskey.HEARTBEAT % self.uid, "", ex=timeout)
+
+    def _start(self):
+        while True:
+            if self._stop_flag:
+                logging.info("All is done, Bye bye!")
+                self.status = RunnerStatus.STOPPED
+                self._save()
+                break
+
+            if self.rstatus == RunnerStatus.DEAD:
+                logging.info("Marked as DEAD runner by the server, closing ...")
+                break
+
+            logging.info("Sending heartbeat with timeout: %s", HEARTBEAT_TIMEOUT)
+            self._send_heartbeat()
+
+            response = self._redis_conn.blpop(self._queues, timeout=HEARTBEAT_TIMEOUT)
+            if not response:
+                continue
+
+            task = self._load_task(response[1].decode())
+            task.result.runner = self.uid
+            task.result.status = TaskStatus.RUNNING
+            task.result.started_at = time.time()
+
+            self.current_task = task.uid
+            self.status = RunnerStatus.BUSY
+            self._save_progress(task)
+
+            try:
+                logging.info("Picked task %s up", task.uid)
+                func, args, kwargs = task.workload
+                timeout = task.timeout or self.timeout
+
+                for attempt in range(max(task.retries, 1)):
+
+                    logging.info("Sending heartbeat with timeout: %s", timeout)
+                    self._send_heartbeat(timeout=timeout)
+
+                    task.result.attempts += 1
+                    logging.info("Executing attempt %s of %s", task.result.attempts, task.retries)
+
+                    try:
+                        if timeout:
+                            task.result.result = gevent.with_timeout(timeout, func, *args, **kwargs)
+                        else:
+                            task.result.result = func(*args, **kwargs)
+                    except Exception as err:
+                        if attempt < task.retries - 1:
+                            logging.exception(str(err))
+                            continue
+                        else:
+                            raise err
+                    else:
+                        task.result.status = TaskStatus.PASSED
+                        break
+
+            except gevent.Timeout:
+                task.result.status = TaskStatus.TIMEDOUT
+
+            except pickle.UnpicklingError as e:
+                task.result.status = TaskStatus.ERRORED
+                task.result.result = str(e)
+
+            except:
+                task.result.status = TaskStatus.FAILED
+                task.result.result = traceback.format_exc()
+
+            finally:
+                task.result.executed_at = time.time()
+
+            self.current_task = 0
+            self.status = RunnerStatus.IDEL
+            self._save_progress(task)
+
+            logging.info("Task %s finished with status %s", task.uid, task.result.status)
 
     def _wait_for_connection(self):
-        while not self._exit:
+        while not self._stop_flag:
             try:
-                if self._redis.ping():
-                    logging.info("Redis connection is back")
+                if self._redis_conn.ping():
+                    logging.info("Redis connection is established, back to work")
                     break
-            except redis_exceptions.ConnectionError:
-                time.sleep(1)
+            except redis.exceptions.ConnectionError:
+                gevent.sleep(1)
 
-    def _wait_for_work(self):
-        queues = [RedisKeys.WORKFLOWS]
-        for queue in self.rqueues:
-            queues.append(queue)
-
-        if self.run_untaged_tasks or not self.tags:
-            queues.append(RedisKeys.QUEUE.format(DEFAULT_QUEUE))
-
-        while not self._exit:
-            try:
-                response = self._redis.blpop(queues, timeout=3)
-                if not response:
-                    continue
-
-                queue, uid = response
-                if queue.decode() == RedisKeys.WORKFLOWS:
-                    workflow = self.get_workflow(uid.decode())
-                    workflow.started_at = time.time()
-                    workflow.status = WorkflowStatus.RUNNING
-                    self._save(workflow)
-
-                    for uid in workflow.current_stage_tasks:
-                        self._queue(uid)
-                else:
-                    task = self.get_task(uid.decode())
-                    task.runner_uid = self.uid
-                    task.status = TaskStatus.RUNNING
-                    task.started_at = time.time()
-                    self._save(task)
-                    try:
-                        logging.info("Executing task %s", task.uid)
-                        func, args, kwargs = task.workload
-                        timeout = task.timeout or self.timeout
-                        for attempt in range(1, task.retries + 1):
-                            logging.info(
-                                "Starting attempt (%s of %s)", attempt, task.retries
-                            )
-                            try:
-                                with gevent.Timeout(timeout):
-                                    with tasklogger as tlg:
-                                        task.result = func(*args, **kwargs)
-                                        task.logs = tlg.get_logs()
-                            except:
-                                if attempt < task.retries - 1:
-                                    continue
-                                    
-                                raise
-                            else:
-                                task.status = TaskStatus.PASSED
-                                break
-
-                    except gevent.Timeout:
-                        task.status = TaskStatus.TIMEOUT
-
-                    except Exception:
-                        task.status = TaskStatus.FAILED
-                        task.error = traceback.format_exc()
-                        
-                    task.executed_at = time.time()
-                    self._save(task)
-
-                    logging.info("Task is finished with status %s", task.status)
-                    
-                    if task.workflow_uid:
-                        workflow = self.get_workflow(task.workflow_uid)
-                        workflow.update_status(self._redis)
-                        if workflow.is_current_stage_done:
-                            if workflow.is_last_stage:
-                                self._expire_cache(workflow.uid)
-                            else:
-                                workflow.current_stage += 1
-                                logging.info(
-                                    "Starting stage %s of workflow %s",
-                                    workflow.current_stage,
-                                    workflow.uid,
-                                )
-                                for uid in workflow.current_stage_tasks:
-                                    self._queue(uid)
-
-                        self._save(workflow)
-
-            except redis_exceptions.ConnectionError:
-                logging.critical("Can't connect to Redis, waiting for the connection ...")
-                self._wait_for_connection()
- 
-    def start(self):
-        logging.info("Taskue runner (ID: %s) is running", self.uid)
-        signal.signal(signal.SIGINT, self.exit_handler)  
-        self._wait_for_work()
-
-    def exit_handler(self, signal, frame):
-        if not self._exit:
+    def _stop(self):
+        if not self._stop_flag:
             logging.info("Shutting down, please wait ...")
-            self._exit = True
+            self._stop_flag = True
+            self.status = RunnerStatus.STOPPING
+            self._save()
+
+    def start(self):
+        """ Start the runner """
+        for signal_type in (SIGTERM, SIGKILL, SIGINT):
+            gevent.signal(signal_type, self._stop)
+
+        logging.info("Taskue runner (ID: %s) is running", self.uid)
+
+        self._queues = [Queue.CUSTOM % tag for tag in self.tags]
+
+        if self.run_untaged_tasks:
+            self._queues.append(Queue.DEFAULT)
+        
+        logging.info(self._queues)
+
+        self._register()
+        self._start()
+
+    def stop(self):
+        """ Stop the runner gracefully """
+        self._stop()
 
 
 if __name__ == "__main__":
-    r = TaskueRunner(Redis())
-    r.start()
+    runner = TaskueRunner(redis.Redis())
+    runner.start()
