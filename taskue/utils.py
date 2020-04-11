@@ -26,9 +26,9 @@ def _decode(data):
     return result
 
 
-logging_format = "<light-blue>{time: YYYY-MM-DD at HH:mm:ss}</> | {extra[app]} | <level>{level}</> | <level>{message}</>"
+logging_format = (
+    "<light-blue>{time: YYYY-MM-DD at HH:mm:ss}</> | {extra[app]} | <level>{level}</> | <level>{message}</>"
+)
 logger.configure(
-    handlers=[
-        dict(sink=sys.stderr, format=logging_format, colorize=True),
-    ]
+    handlers=[dict(sink=sys.stderr, format=logging_format, colorize=True),]
 )

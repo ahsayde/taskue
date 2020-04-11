@@ -235,7 +235,7 @@ class TaskResult(Base):
     """ Task result class """
 
     def __init__(self, task: Task):
-        super().__init__(** task.__dict__)
+        super().__init__(**task.__dict__)
 
     @property
     def is_passed(self):
@@ -255,7 +255,7 @@ class _Task(Base):
     """ Internal task class """
 
     def __init__(self, task: Task):
-        super().__init__(** task.__dict__)
+        super().__init__(**task.__dict__)
 
     @property
     def redis_key(self):
@@ -351,5 +351,6 @@ class TaskSummary:
         self.uid = task.uid
         self.title = task.title
         self.status = task.status
+        self.stage = task.stage
         self.allow_failure = task.allow_failure
         self.rescheduleded = task.rescheduleded > 1

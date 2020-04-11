@@ -55,7 +55,8 @@ class Taskue:
     def workflow_get(self, workflow_uid):
         blob = self._redis_conn.get(Rediskey.WORKFLOW % workflow_uid)
         if not blob:
-            raise ValueError("Workflow %s does not exist" % workflow_uid)
+            raise WorkflowNotFound()
+
         return WorkflowResult(**pickle.loads(blob).__dict__)
 
     def wait_for_workflow(self, workflow_uid):
@@ -76,9 +77,9 @@ class Taskue:
         pipeline.zrem(Rediskey.WORKFLOWS, workflow_uid)
 
         tasks = []
-        for stage in workflow.stages.values():
-            for task_uid in stage.keys():
-                tasks.append(Rediskey.TASK % task_uid)
+        for stage in workflow.stages:
+            for task in stage:
+                tasks.append(Rediskey.TASK % task.uid)
 
         pipeline.delete(*tasks)
         pipeline.execute()
@@ -86,7 +87,7 @@ class Taskue:
     def task_get(self, task_uid):
         blob = self._redis_conn.get(Rediskey.TASK % task_uid)
         if not blob:
-            raise ValueError("Task %s does not exist" % task_uid)
+            raise TaskNotFound()
 
         return TaskResult(pickle.loads(blob))
 
@@ -97,3 +98,13 @@ class Taskue:
                 return task
             else:
                 time.sleep(1)
+
+
+class WorkflowNotFound(Exception):
+    def __str__(self):
+        return "workflow not found"
+
+
+class TaskNotFound(Exception):
+    def __str__(self):
+        return "task not found"

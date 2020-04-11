@@ -48,10 +48,7 @@ class TaskueServer:
     def _monitor_runners(self):
         while not self._stop_flag:
             for runner in self._runners:
-                if (
-                    self._is_healthy_runner(runner["uid"])
-                    or runner["status"] not in RunnerStatus.ACTIVE
-                ):
+                if self._is_healthy_runner(runner["uid"]) or runner["status"] not in RunnerStatus.ACTIVE:
                     continue
 
                 logger.warning("Runner {} is dead", runner["uid"])
@@ -88,9 +85,7 @@ class TaskueServer:
     def _start(self):
         while not self._stop_flag:
             try:
-                response = self._redis_conn.blpop(
-                    (Queue.EVENTS, Queue.WORKFLOWS), timeout=BLOCK_TIMEOUT
-                )
+                response = self._redis_conn.blpop((Queue.EVENTS, Queue.WORKFLOWS), timeout=BLOCK_TIMEOUT)
                 if not response:
                     continue
 

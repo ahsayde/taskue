@@ -29,10 +29,6 @@ class RunnerStatus:
     ACTIVE = [IDEL, BUSY]
 
 
-# def error_handler(ttype, tvalue, tb):
-#     if ttype == redis.exceptions.ConnectionError:
-#         wait_for_connection()
-
 class TaskueRunner:
     def __init__(
         self,
@@ -125,7 +121,7 @@ class TaskueRunner:
             sys.exit(1)
 
     def _start(self):
-        self.logger.success("Taskue runner (ID: {}) is running", self.uid) 
+        self.logger.success("Taskue runner (ID: {}) is running", self.uid)
         while True:
             if self._stop_flag:
                 self.logger.success("All is done, Bye bye!")
@@ -167,7 +163,6 @@ class TaskueRunner:
             finally:
                 task.executed_at = time.time()
 
-
             self._check_status()
 
             self.current_task = 0
@@ -175,7 +170,6 @@ class TaskueRunner:
             self._save_progress(task)
 
             self.logger.info("Task {} finished with status {}", task.uid, task.status.value)
- 
 
     def _wait_for_connection(self):
         while not self._stop_flag:
