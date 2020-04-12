@@ -24,6 +24,9 @@ class TaskueServer:
         self._redis_conn = redis_conn
         self._stop_flag = False
 
+    def __dir__(self):
+        return ('start', 'stop')
+
     @property
     def _runners(self):
         for key in self._redis_conn.keys(Rediskey.RUNNER % "*"):
@@ -39,21 +42,24 @@ class TaskueServer:
         workflow._redis_conn = self._redis_conn
         return workflow
 
-    def _is_healthy_runner(self, uid):
-        return self._redis_conn.exists(Rediskey.HEARTBEAT % uid)
+    def _is_healthy_runner(self, name):
+        return self._redis_conn.exists(Rediskey.HEARTBEAT % name)
 
-    def _disable_runner(self, runner_uid, pipeline):
-        pipeline.hset("taskue:runner:%s" % runner_uid, "status", RunnerStatus.DEAD)
+    def _enable_runner(self, runner_name, pipeline):
+        pipeline.hset(Rediskey.RUNNER % runner_name, "status", RunnerStatus.IDEL)
+
+    def _disable_runner(self, runner_name, pipeline):
+        pipeline.hset(Rediskey.RUNNER % runner_name, "status", RunnerStatus.DEAD)
 
     def _monitor_runners(self):
         while not self._stop_flag:
             for runner in self._runners:
-                if self._is_healthy_runner(runner["uid"]) or runner["status"] not in RunnerStatus.ACTIVE:
+                if self._is_healthy_runner(runner["name"]) or runner["status"] not in RunnerStatus.ACTIVE:
                     continue
 
-                logger.warning("Runner {} is dead", runner["uid"])
+                logger.warning("Runner {} is dead", runner["name"])
                 pipeline = self._redis_conn.pipeline()
-                self._disable_runner(runner["uid"], pipeline)
+                self._disable_runner(runner["name"], pipeline)
 
                 if runner["status"] == RunnerStatus.BUSY:
                     task = self._load_task(runner["task"])
@@ -125,8 +131,3 @@ class TaskueServer:
     def stop(self):
         """ Stop the server """
         self._stop()
-
-
-if __name__ == "__main__":
-    server = TaskueServer(redis.Redis())
-    server.start()

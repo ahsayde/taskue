@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="taskue",
-    version="0.4",
+    version="1.0",
     author="Ahmed El-Sayed",
     author_email="ahmed.m.elsayed93@gmail.com",
     description="Multi stages task queue",
@@ -15,5 +15,5 @@ setup(
     url="https://github.com/ahelsayd/taskue",
     install_requires=[],
     packages=find_packages(),
-    entry_points={"console_scripts": ["taskue=taskue.cli:cli"]},
+    entry_points={"console_scripts": ["taskue-cli=taskue.cli:cli"]},
 )

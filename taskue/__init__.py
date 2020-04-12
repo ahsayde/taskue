@@ -40,10 +40,10 @@ class Taskue:
         for key in keys:
             yield key.decode().replace(Rediskey.RUNNER % "", "")
 
-    def runner_get(self, runner_uid):
-        runner = self._redis_conn.hgetall(Rediskey.RUNNER % runner_uid)
+    def runner_get(self, name):
+        runner = self._redis_conn.hgetall(Rediskey.RUNNER % name)
         if not runner:
-            raise ValueError("Runner %s does not exist" % runner_uid)
+            raise ValueError("Runner %s does not exist" % name)
         return _decode(runner)
 
     def workflow_list(self, page=1, limit=25, done_only=False):
@@ -59,7 +59,7 @@ class Taskue:
 
         return WorkflowResult(**pickle.loads(blob).__dict__)
 
-    def wait_for_workflow(self, workflow_uid):
+    def workflow_wait(self, workflow_uid):
         while True:
             workflow = self.workflow_get(workflow_uid)
             if workflow.status in WORKFLOW_DONE_STATES:
@@ -91,7 +91,7 @@ class Taskue:
 
         return TaskResult(pickle.loads(blob))
 
-    def wait_for_task(self, task_uid):
+    def task_wait(self, task_uid):
         while True:
             task = self.task_get(task_uid)
             if task.status in TASK_DONE_STATES:

@@ -3,7 +3,7 @@ from gevent import monkey
 monkey.patch_all()
 import sys
 import time
-import uuid
+from uuid import uuid4
 import pickle
 import traceback
 from signal import SIGINT, SIGKILL, SIGTERM
@@ -38,8 +38,7 @@ class TaskueRunner:
         timeout: int = 3600,
         run_untaged_tasks: bool = True,
     ):
-        self.uid = uuid.uuid4().hex[:5]
-        self.name = name or f"RUNNER-{self.uid}"
+        self.name = name or uuid4().hex[:10]
         self.tags = tags or ()
         self.timeout = timeout
         self.current_task = 0
@@ -49,21 +48,23 @@ class TaskueRunner:
         self._redis_conn = redis_conn
         self._heartbeat_thread = None
         self._stop_flag = False
-        self.logger = logger.bind(app="RUNNER %s" % self.uid)
+        self.logger = logger.bind(app="RUNNER %s" % self.name)
+
+    def __dir__(self):
+        return ('start', 'stop')
 
     @property
     def redis_key(self):
-        return Rediskey.RUNNER % self.uid
+        return Rediskey.RUNNER % self.name
 
     @property
     def rstatus(self):
-        return self._redis_conn.hget(Rediskey.RUNNER % self.uid, "status").decode()
+        return self._redis_conn.hget(Rediskey.RUNNER % self.name, "status").decode()
 
     def _register(self):
         self._redis_conn.hmset(
             self.redis_key,
             dict(
-                uid=self.uid,
                 name=self.name,
                 task=self.current_task,
                 status=RunnerStatus.IDEL,
@@ -90,7 +91,7 @@ class TaskueRunner:
     def _send_heartbeat(self, timeout=None):
         timeout = (timeout or HEARTBEAT_TIMEOUT) + HEARTBEAT_MAX_DELAY
         self.logger.info("Sending heartbeat with timeout: {}", timeout)
-        self._redis_conn.set(Rediskey.HEARTBEAT % self.uid, "", ex=timeout)
+        self._redis_conn.set(Rediskey.HEARTBEAT % self.name, "", ex=timeout)
 
     def _execute_task(self, task):
         func, args, kwargs = task.workload
@@ -121,7 +122,7 @@ class TaskueRunner:
             sys.exit(1)
 
     def _start(self):
-        self.logger.success("Taskue runner (ID: {}) is running", self.uid)
+        self.logger.success("Taskue runner (ID: {}) is running", self.name)
         while True:
             if self._stop_flag:
                 self.logger.success("All is done, Bye bye!")
@@ -137,7 +138,7 @@ class TaskueRunner:
                 continue
 
             task = self._load_task(response[1].decode())
-            task.runner = self.uid
+            task.runner = self.name
             task.status = TaskStatus.RUNNING
             task.started_at = time.time()
 
@@ -192,6 +193,8 @@ class TaskueRunner:
         for signal_type in (SIGTERM, SIGKILL, SIGINT):
             gevent.signal(signal_type, self._stop)
 
+        import ipdb; ipdb.set_trace()
+
         self._queues = [Queue.CUSTOM % tag for tag in self.tags]
         if self.run_untaged_tasks:
             self._queues.append(Queue.DEFAULT)
@@ -202,8 +205,3 @@ class TaskueRunner:
     def stop(self):
         """ Stop the runner gracefully """
         self._stop()
-
-
-if __name__ == "__main__":
-    runner = TaskueRunner(redis.Redis())
-    runner.start()
