@@ -5,6 +5,7 @@ from loguru import logger
 
 
 class Rediskey:
+    NAMESPACES = "taskue:namespaces"
     RUNNER = "taskue:runner:%s"
     HEARTBEAT = "taskue:heartbeat:%s"
     WORKFLOW = "taskue:workflow:%s"

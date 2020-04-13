@@ -35,6 +35,17 @@ class Taskue:
         pipeline.execute()
         return workflow.uid
 
+    def namespace_list(self):
+        namespaces = self._redis_conn.hscan_iter(Rediskey.NAMESPACES)
+        for item in namespaces:
+            namespace, timestamp = item
+            yield dict(
+                name=namespace.decode(), timestamp=int(timestamp.decode())
+            )
+    
+    def namespace_delete(self, namespace):
+        self._redis_conn.hdel(Rediskey.NAMESPACES, namespace)
+
     def runner_list(self):
         keys = self._redis_conn.keys(Rediskey.RUNNER % "*")
         for key in keys:
