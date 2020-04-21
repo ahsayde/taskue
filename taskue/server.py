@@ -2,16 +2,11 @@ from gevent import monkey
 
 monkey.patch_all()
 
-import time
-import gevent
 import redis
-import pickle
+import gevent
 from signal import SIGINT, SIGKILL, SIGTERM
-
 from taskue.runner import RunnerStatus
-from taskue.task import _Task
-from taskue.workflow import _Workflow
-from taskue.utils import Queue, Rediskey, _decode, logger
+from taskue.utils import logger, RedisController
 
 
 BLOCK_TIMEOUT = 5
@@ -20,50 +15,33 @@ logger = logger.bind(app="SERVER")
 
 
 class TaskueServer:
-    def __init__(self, redis_conn: redis.Redis):
-        self._redis_conn = redis_conn
+    def __init__(self, redis_conn: redis.Redis, namespace: str = "default"):
+        self.namespace = namespace
         self._stop_flag = False
+        self._rctrl = RedisController(redis_conn, namespace)
 
     def __dir__(self):
-        return ('start', 'stop')
-
-    @property
-    def _runners(self):
-        for key in self._redis_conn.keys(Rediskey.RUNNER % "*"):
-            yield _decode(self._redis_conn.hgetall(key))
-
-    def _load_task(self, uid):
-        blob = self._redis_conn.get(Rediskey.TASK % uid)
-        return pickle.loads(blob)
-
-    def _load_workflow(self, uid):
-        blob = self._redis_conn.get(Rediskey.WORKFLOW % uid)
-        workflow = pickle.loads(blob)
-        workflow._redis_conn = self._redis_conn
-        return workflow
-
-    def _is_healthy_runner(self, name):
-        return self._redis_conn.exists(Rediskey.HEARTBEAT % name)
-
-    def _enable_runner(self, runner_name, pipeline):
-        pipeline.hset(Rediskey.RUNNER % runner_name, "status", RunnerStatus.IDEL)
+        return ("namespace", "start", "stop")
 
     def _disable_runner(self, runner_name, pipeline):
-        pipeline.hset(Rediskey.RUNNER % runner_name, "status", RunnerStatus.DEAD)
+        self._rctrl.update_runner(runner_name, status=RunnerStatus.DEAD, task=0, pipeline=pipeline)
 
     def _monitor_runners(self):
         while not self._stop_flag:
-            for runner in self._runners:
-                if self._is_healthy_runner(runner["name"]) or runner["status"] not in RunnerStatus.ACTIVE:
+            for runner in self._rctrl.get_runners():
+                if (
+                    self._rctrl.is_healthy_runner(runner["name"])
+                    or runner["status"] not in RunnerStatus.ACTIVE
+                ):
                     continue
 
                 logger.warning("Runner {} is dead", runner["name"])
-                pipeline = self._redis_conn.pipeline()
+                pipeline = self._rctrl.pipeline()
                 self._disable_runner(runner["name"], pipeline)
 
                 if runner["status"] == RunnerStatus.BUSY:
-                    task = self._load_task(runner["task"])
-                    workflow = self._load_workflow(task.workflow)
+                    task = self._rctrl.get_task(runner["task"])
+                    workflow = self._rctrl.get_workflow(task.workflow)
 
                     if task.enable_rescheduling:
                         logger.info("Re-scheduling task {}", runner["task"])
@@ -82,7 +60,7 @@ class TaskueServer:
     def _wait_for_connection(self):
         while not self._stop_flag:
             try:
-                if self._redis_conn.ping():
+                if self._rctrl.ping():
                     logger.info("Redis connection is established, back to work")
                     break
             except redis.exceptions.ConnectionError:
@@ -91,19 +69,22 @@ class TaskueServer:
     def _start(self):
         while not self._stop_flag:
             try:
-                response = self._redis_conn.blpop((Queue.EVENTS, Queue.WORKFLOWS), timeout=BLOCK_TIMEOUT)
-                if not response:
+                queue, uid = self._rctrl.blpop(
+                    (self._rctrl.workfows_queue, self._rctrl.events_queue), timeout=BLOCK_TIMEOUT
+                )
+                if not (queue and uid):
                     continue
 
-                queue, uid = response[0].decode(), response[1].decode()
-                if queue == Queue.WORKFLOWS:
+                if queue == self._rctrl.workfows_queue:
                     logger.info("Starting workflow {}", uid)
-                    workflow = self._load_workflow(uid)
+                    workflow = self._rctrl.get_workflow(uid)
+                    workflow.rctrl = self._rctrl
                     workflow.start()
 
-                elif queue == Queue.EVENTS:
-                    task = self._load_task(uid)
-                    workflow = self._load_workflow(task.workflow)
+                elif queue == self._rctrl.events_queue:
+                    task = self._rctrl.get_task(uid)
+                    workflow = self._rctrl.get_workflow(task.workflow)
+                    workflow.rctrl = self._rctrl
 
                     if task.status == workflow.get_task_status(task):
                         continue
@@ -131,3 +112,10 @@ class TaskueServer:
     def stop(self):
         """ Stop the server """
         self._stop()
+
+
+if __name__ == "__main__":
+    from redis import Redis
+
+    server = TaskueServer(Redis())
+    server.start()

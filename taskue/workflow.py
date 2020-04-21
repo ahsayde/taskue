@@ -3,7 +3,7 @@ import time
 import uuid
 from enum import Enum
 
-from taskue.utils import Queue, Rediskey
+from taskue.utils import RedisController
 from taskue.task import _Task, TaskStatus, TaskSummary, Conditions, TASK_DONE_STATES
 
 
@@ -42,7 +42,7 @@ class Base:
         self._done_at = kwargs.get("_done_at", None)
         self._stages = kwargs.get("_stages", [])
         self._current_stage = kwargs.get("_current_stage", 0)
-        self._redis_conn = None
+        self.rctrl = None
 
     @property
     def uid(self):
@@ -106,14 +106,8 @@ class Workflow(Base):
 class _Workflow(Base):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-    @property
-    def redis_key(self):
-        return Rediskey.WORKFLOW % self.uid
-
-    @property
-    def redis_conn(self, value):
-        self._redis_conn = value
+        self.namespace = "default"
+        self.rctrl = None
 
     @property
     def is_last_stage(self):
@@ -134,10 +128,6 @@ class _Workflow(Base):
     @current_stage.setter
     def current_stage(self, value):
         self._current_stage = value
-
-    @redis_conn.setter
-    def redis_conn(self, value):
-        self._redis_conn = value
 
     @Base.status.setter  # pylint: disable=no-member
     def status(self, value):
@@ -173,7 +163,10 @@ class _Workflow(Base):
             if task.status not in TASK_DONE_STATES:
                 return StageStatus.RUNNING
 
-            if task.status not in [TaskStatus.PASSED, TaskStatus.SKIPPED] and not task.allow_failure:
+            if (
+                task.status not in [TaskStatus.PASSED, TaskStatus.SKIPPED]
+                and not task.allow_failure
+            ):
                 return StageStatus.FAILED
         else:
             return StageStatus.PASSED
@@ -190,43 +183,31 @@ class _Workflow(Base):
         else:
             self.status = WorkflowStatus.PASSED
 
-    def load_task(self, uid):
-        blob = self._redis_conn.get(Rediskey.TASK % uid)
-        return pickle.loads(blob)
-
     def queue_task(self, task, pipeline):
         task.queue()
-        task.save(pipeline)
-        pipeline.rpush(task.redis_queue, task.uid)
+        self.rctrl.save_task(task, queue=True, pipeline=pipeline)
 
     def skip_task(self, task, pipeline):
         task.skip()
-        task.save(pipeline)
+        self.rctrl.save_task(task, pipeline=pipeline)
 
     def reschedule_task(self, task, pipeline):
         task.reschedule()
-        task.save(pipeline)
-        pipeline.lpush(task.redis_queue, task.uid)
+        self.rctrl.save_task(task, pipeline=pipeline)
 
     def terminate_task(self, task, pipeline):
         task.terminate()
-        task.save(pipeline)
-
-    def save(self, pipeline, queue=False):
-        pipeline.set(Rediskey.WORKFLOW % self.uid, pickle.dumps(self))
-        if queue:
-            pipeline.zadd(Rediskey.WORKFLOWS, self.uid, self.created_at)
-            pipeline.rpush(Queue.WORKFLOWS, self.uid)
+        self.rctrl.save_task(task, pipeline=pipeline)
 
     def start(self):
-        pipeline = self._redis_conn.pipeline()
+        pipeline = self.rctrl.pipeline()
         self.status = WorkflowStatus.RUNNING
         self.started_at = time.time()
         self.start_next_stage(pipeline=pipeline)
 
     def start_next_stage(self, pipeline, prev_status=None):
         for task in self.current_stage_tasks:
-            task = self.load_task(task.uid)
+            task = self.rctrl.get_task(task.uid)
             if (
                 self.current_stage == 1
                 or task.when == Conditions.ALWAYS
@@ -241,8 +222,8 @@ class _Workflow(Base):
         self.update(pipeline=pipeline)
 
     def update(self, pipeline=None):
-        if not pipeline:
-            pipeline = self._redis_conn.pipeline()
+        if pipeline is None:
+            pipeline = self.rctrl.pipeline()
 
         status = self.get_stage_status(self.current_stage)
         if status in STAGE_DONE_STATES:
@@ -253,9 +234,9 @@ class _Workflow(Base):
                 self.current_stage += 1
                 self.start_next_stage(pipeline, prev_status=status)
 
-        self.save(pipeline)
+        self.rctrl.save_workflow(self, pipeline=pipeline)
         pipeline.execute()
 
     def __getstate__(self):
-        self.redis_conn = None
+        self.rctrl = None
         return self.__dict__

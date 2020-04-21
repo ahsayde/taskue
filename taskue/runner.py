@@ -11,9 +11,8 @@ from signal import SIGINT, SIGKILL, SIGTERM
 import gevent
 import redis
 
-from taskue import logger
-from taskue import _Task, TaskStatus
-from taskue.utils import Queue, Rediskey
+from taskue.task import _Task, TaskStatus
+from taskue.utils import RedisController, logger
 
 
 HEARTBEAT_TIMEOUT = 10
@@ -34,69 +33,57 @@ class TaskueRunner:
         self,
         redis_conn: redis.Redis,
         name: str = None,
-        tags: tuple = None,
+        namespace: str = "default",
+        queues: tuple = None,
         timeout: int = 3600,
         run_untaged_tasks: bool = True,
     ):
         self.name = name or uuid4().hex[:10]
-        self.tags = tags or ()
+        self.namespace = namespace
+        self.queues = queues or ()
         self.timeout = timeout
-        self.current_task = 0
-        self.status = RunnerStatus.IDEL
         self.run_untaged_tasks = run_untaged_tasks
-        self._queues = []
-        self._redis_conn = redis_conn
-        self._heartbeat_thread = None
-        self._stop_flag = False
         self.logger = logger.bind(app="RUNNER %s" % self.name)
+        self._stop_flag = False
+        self._queues = []
+        self._rctrl = RedisController(redis_conn, namespace)
 
     def __dir__(self):
         return ('start', 'stop')
 
     @property
-    def redis_key(self):
-        return Rediskey.RUNNER % self.name
-
-    @property
     def rstatus(self):
-        return self._redis_conn.hget(Rediskey.RUNNER % self.name, "status").decode()
+        return self._rctrl.get_runner_status(self.name)
 
     def _register(self):
-        self._redis_conn.hmset(
-            self.redis_key,
-            dict(
-                name=self.name,
-                task=self.current_task,
-                status=RunnerStatus.IDEL,
-                timeout=self.timeout,
-                tags=",".join(self.tags),
-                run_untaged_tasks=int(self.run_untaged_tasks),
-            ),
+        self._rctrl.register_runner(
+            name=self.name,
+            timeout=self.timeout,
+            queues=self.queues,
+            status=RunnerStatus.IDEL,
+            run_untaged_tasks=self.run_untaged_tasks
         )
 
-    def _load_task(self, uid):
-        blob = self._redis_conn.get(Rediskey.TASK % uid)
-        return pickle.loads(blob)
+    # def _save(self, task):
+    #     pipeline = self._rctrl.pipeline()
+    #     self._rctrl.save_task(task, notify=True, pipeline=pipeline)
+    #     self._rctrl.save_runner()
+    #     pipeline.execute()
 
-    def _save(self, pipeline=None):
-        redis_conn = pipeline or self._redis_conn
-        redis_conn.hmset(self.redis_key, dict(status=self.status, task=self.current_task))
-
-    def _save_progress(self, task):
-        pipeline = self._redis_conn.pipeline()
-        task.save(pipeline, notify=True)
-        self._save(pipeline)
-        pipeline.execute()
+        # self._redis_ctrl.save_task(task, notify=True, pipeline=pipeline)
+        # self._redis_ctrl.save_runner(self.name, dict(status=self.status, task=self.current_task))    
+        # pipeline.execute()
 
     def _send_heartbeat(self, timeout=None):
         timeout = (timeout or HEARTBEAT_TIMEOUT) + HEARTBEAT_MAX_DELAY
         self.logger.info("Sending heartbeat with timeout: {}", timeout)
-        self._redis_conn.set(Rediskey.HEARTBEAT % self.name, "", ex=timeout)
+        self._rctrl.send_runner_heartbeat(self.name, timeout)
 
     def _execute_task(self, task):
         func, args, kwargs = task.workload
         timeout = task.timeout or self.timeout
         for attempt in range(max(task.retries, 1)):
+
             self._send_heartbeat(timeout=timeout)
 
             task.attempts += 1
@@ -122,29 +109,34 @@ class TaskueRunner:
             sys.exit(1)
 
     def _start(self):
-        self.logger.success("Taskue runner (ID: {}) is running", self.name)
+        self.logger.info("Taskue runner (ID: {}) is running", self.name)
         while True:
-            if self._stop_flag:
-                self.logger.success("All is done, Bye bye!")
-                self.status = RunnerStatus.STOPPED
-                self._save()
+            
+
+            if self.rstatus == RunnerStatus.DEAD:
                 break
 
-            self._check_status()
+            if self._stop_flag:
+                self._rctrl.update_runner(self.name, status=RunnerStatus.STOPPED)
+                break
+
+            # self._check_status()
+
             self._send_heartbeat()
 
-            response = self._redis_conn.blpop(self._queues, timeout=HEARTBEAT_TIMEOUT)
-            if not response:
+            _, uid = self._rctrl.blpop(self._queues, timeout=HEARTBEAT_TIMEOUT)
+            if not uid:
                 continue
 
-            task = self._load_task(response[1].decode())
+            task = self._rctrl.get_task(uid)
             task.runner = self.name
             task.status = TaskStatus.RUNNING
             task.started_at = time.time()
 
-            self.current_task = task.uid
-            self.status = RunnerStatus.BUSY
-            self._save_progress(task)
+            pipeline = self._rctrl.pipeline()
+            self._rctrl.save_task(task, notify=True, pipeline=pipeline)
+            self._rctrl.update_runner(self.name, status=RunnerStatus.BUSY, task=task.uid, pipeline=pipeline)
+            pipeline.execute()
 
             try:
                 self.logger.info("Picked task {} up", task.uid)
@@ -164,18 +156,16 @@ class TaskueRunner:
             finally:
                 task.executed_at = time.time()
 
-            self._check_status()
-
-            self.current_task = 0
-            self.status = RunnerStatus.IDEL
-            self._save_progress(task)
+            self._rctrl.save_task(task, notify=True, pipeline=pipeline)
+            self._rctrl.update_runner(self.name, status=RunnerStatus.IDEL, task=0, pipeline=pipeline)
+            pipeline.execute()
 
             self.logger.info("Task {} finished with status {}", task.uid, task.status.value)
 
     def _wait_for_connection(self):
         while not self._stop_flag:
             try:
-                if self._redis_conn.ping():
+                if self._rctrl.ping():
                     self.logger.success("Redis connection is established, back to work")
                     break
             except redis.exceptions.ConnectionError:
@@ -185,19 +175,16 @@ class TaskueRunner:
         if not self._stop_flag:
             self.logger.info("Shutting down, please wait ...")
             self._stop_flag = True
-            self.status = RunnerStatus.STOPPING
-            self._save()
+            self._rctrl.update_runner(self.name, status=RunnerStatus.STOPPING)
 
     def start(self):
         """ Start the runner """
         for signal_type in (SIGTERM, SIGKILL, SIGINT):
             gevent.signal(signal_type, self._stop)
 
-        import ipdb; ipdb.set_trace()
-
-        self._queues = [Queue.CUSTOM % tag for tag in self.tags]
+        self._queues = [self._rctrl.task_queue % queues for queues in self.queues]
         if self.run_untaged_tasks:
-            self._queues.append(Queue.DEFAULT)
+            self._queues.append(self._rctrl.task_queue % "default")
 
         self._register()
         self._start()
@@ -205,3 +192,10 @@ class TaskueRunner:
     def stop(self):
         """ Stop the runner gracefully """
         self._stop()
+
+
+if __name__ == "__main__":
+    from redis import Redis
+
+    runner = TaskueRunner(Redis())
+    runner.start()

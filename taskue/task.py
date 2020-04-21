@@ -257,14 +257,6 @@ class _Task(Base):
     def __init__(self, task: Task):
         super().__init__(**task.__dict__)
 
-    @property
-    def redis_key(self):
-        return Rediskey.TASK % self.uid
-
-    @property
-    def redis_queue(self):
-        return Queue.DEFAULT if not self.tag else Queue.CUSTOM % self.tag
-
     @Base.tid.setter  # pylint: disable=no-member
     def tid(self, value):
         self._tid = value
@@ -337,11 +329,6 @@ class _Task(Base):
     def terminate(self):
         self.status = TaskStatus.TERMINATED
         self.terminated_at = time.time()
-
-    def save(self, connection, notify=False):
-        connection.set(self.redis_key, pickle.dumps(self))
-        if notify:
-            connection.rpush(Queue.EVENTS, self.uid)
 
 
 class TaskSummary:

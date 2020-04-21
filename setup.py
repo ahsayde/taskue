@@ -15,5 +15,5 @@ setup(
     url="https://github.com/ahelsayd/taskue",
     install_requires=[],
     packages=find_packages(),
-    entry_points={"console_scripts": ["taskue-cli=taskue.cli:cli"]},
+    entry_points={"console_scripts": ["taskue=taskue.cli:cli"]},
 )

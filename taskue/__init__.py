@@ -4,111 +4,114 @@ import time
 from redis import Redis
 from uuid import uuid4
 
-from taskue.utils import Queue, Rediskey, _decode, logger
+from taskue.utils import RedisController
 from taskue.task import Task, _Task, TaskStatus, TaskResult, TaskSummary, TASK_DONE_STATES
-from taskue.workflow import Workflow, _Workflow, WorkflowResult, WorkflowStatus, WORKFLOW_DONE_STATES
+from taskue.workflow import (
+    Workflow,
+    _Workflow,
+    WorkflowResult,
+    WorkflowStatus,
+    WORKFLOW_DONE_STATES,
+)
 
 
 class Taskue:
-    def __init__(self, redis_conn: Redis):
-        self._redis_conn = redis_conn
+    def __init__(self, redis_conn: Redis, namespace: str = "default"):
+        self._namespace = namespace
+        self._rctrl = RedisController(redis_conn, namespace=namespace)
+
+    @property
+    def namespace(self):
+        return self._namespace
 
     def run(self, stages: list, title: str = None) -> str:
-        pipeline = self._redis_conn.pipeline()
+        pipeline = self._rctrl.pipeline()
         workflow = _Workflow(title=title)
         workflow.status = WorkflowStatus.PENDING
         workflow.created_at = time.time()
+        workflow.namespace = self.namespace
 
         for stage, tasks in enumerate(stages):
             workflow.stages.append([])
             for index, task in enumerate(tasks):
                 task = _Task(task)
+                task.namespace = self.namespace
                 task.tid = index
                 task.stage = stage
                 task.workflow = workflow.uid
                 task.status = TaskStatus.CREATED
                 task.created_at = workflow.created_at
                 workflow.stages[stage].append(TaskSummary(task))
-                task.save(pipeline)
+                self._rctrl.save_task(task, queue=True, pipeline=pipeline)
 
-        workflow.save(pipeline, queue=True)
+        self._rctrl.save_workflow(workflow, queue=True, pipeline=pipeline)
         pipeline.execute()
         return workflow.uid
 
     def namespace_list(self):
-        namespaces = self._redis_conn.hscan_iter(Rediskey.NAMESPACES)
-        for item in namespaces:
-            namespace, timestamp = item
-            yield dict(
-                name=namespace.decode(), timestamp=int(timestamp.decode())
-            )
-    
+        return self._rctrl.list_namespaces()
+
     def namespace_delete(self, namespace):
-        self._redis_conn.hdel(Rediskey.NAMESPACES, namespace)
+        self._rctrl.namespace_delete(namespace)
 
     def runner_list(self):
-        keys = self._redis_conn.keys(Rediskey.RUNNER % "*")
-        for key in keys:
-            yield key.decode().replace(Rediskey.RUNNER % "", "")
+        return self._rctrl.get_runners()
 
     def runner_get(self, name):
-        runner = self._redis_conn.hgetall(Rediskey.RUNNER % name)
+        runner = self._rctrl.get_runner(name)
         if not runner:
-            raise ValueError("Runner %s does not exist" % name)
-        return _decode(runner)
+            raise RunnerNotFound()
+        return runner
 
-    def workflow_list(self, page=1, limit=25, done_only=False):
+    def workflow_list(self, page=1, limit=25):
         start = (page - 1) * limit
         end = (page * limit) - 1
-        for uid in self._redis_conn.zrange(Rediskey.WORKFLOWS, start, end):
+        for uid in self._rctrl.list_workflows(start, end):
             yield uid.decode()
 
-    def workflow_get(self, workflow_uid):
-        blob = self._redis_conn.get(Rediskey.WORKFLOW % workflow_uid)
-        if not blob:
+    def workflow_get(self, uid):
+        workflow = self._rctrl.get_workflow(uid)
+        if not workflow:
             raise WorkflowNotFound()
+        return WorkflowResult(**workflow.__dict__)
 
-        return WorkflowResult(**pickle.loads(blob).__dict__)
-
-    def workflow_wait(self, workflow_uid):
-        while True:
-            workflow = self.workflow_get(workflow_uid)
+    def workflow_wait(self, uid, timeout: int = 60):
+        for _ in range(timeout):
+            workflow = self.workflow_get(uid)
             if workflow.status in WORKFLOW_DONE_STATES:
                 return workflow
             else:
                 time.sleep(1)
+        else:
+            raise TimeoutError("timeout")
 
-    def workflow_delete(self, workflow_uid):
-        workflow = self.workflow_get(workflow_uid)
+    def workflow_delete(self, uid):
+        workflow = self.workflow_get(uid)
         if not workflow.is_done:
             raise RuntimeError("Cannot delete unfinished workflow")
 
-        pipeline = self._redis_conn.pipeline()
-        pipeline.delete(Rediskey.WORKFLOW % workflow_uid)
-        pipeline.zrem(Rediskey.WORKFLOWS, workflow_uid)
+        self._rctrl.delete_workflow(uid)
 
-        tasks = []
-        for stage in workflow.stages:
-            for task in stage:
-                tasks.append(Rediskey.TASK % task.uid)
-
-        pipeline.delete(*tasks)
-        pipeline.execute()
-
-    def task_get(self, task_uid):
-        blob = self._redis_conn.get(Rediskey.TASK % task_uid)
-        if not blob:
+    def task_get(self, uid):
+        task = self._rctrl.get_task(uid)
+        if not task:
             raise TaskNotFound()
+        return TaskResult(task)
 
-        return TaskResult(pickle.loads(blob))
-
-    def task_wait(self, task_uid):
-        while True:
-            task = self.task_get(task_uid)
+    def task_wait(self, uid: str, timeout: int = 60):
+        for _ in range(timeout):
+            task = self.task_get(uid)
             if task.status in TASK_DONE_STATES:
                 return task
             else:
                 time.sleep(1)
+        else:
+            raise TimeoutError("timeout")
+
+
+class RunnerNotFound(Exception):
+    def __str__(self):
+        return "runner not found"
 
 
 class WorkflowNotFound(Exception):
