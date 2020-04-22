@@ -15,18 +15,21 @@ class Rediskey:
 
 
 class Queue:
-    WORKFLOWS = "taskue:{ns}:queue:workflows"
-    EVENTS = "taskue:{ns}:queue:events"
-    TASKS = "taskue:{ns}:queue:%s"
+    NEW_WORKFLOWS = "taskue:{ns}:new:workflow"
+    NEW_TASKS = "taskue:{ns}:new:tasks"
+    QUEUED_TASKS = "taskue:{ns}:queued:tasks:%s"
+    EVENTS = "taskue:{ns}:events"
+
 
 
 class RedisController:
     def __init__(self, connection, namespace):
         self._connection = connection
         self._namespace = namespace
-        self.workfows_queue = Queue.WORKFLOWS.format(ns=self.namespace)
+        self.new_workfows_queue = Queue.NEW_WORKFLOWS.format(ns=self.namespace)
+        self.new_tasks_queue = Queue.NEW_TASKS.format(ns=self.namespace)
+        self.queued_tasks_queue = Queue.QUEUED_TASKS.format(ns=self.namespace)
         self.events_queue = Queue.EVENTS.format(ns=self.namespace)
-        self.task_queue = Queue.TASKS.format(ns=self.namespace)
 
     @property
     def namespace(self):
@@ -132,7 +135,7 @@ class RedisController:
             connection.zadd(
                 Rediskey.WORKFLOWS.format(ns=self.namespace), workflow.uid, workflow.created_at,
             )
-            connection.rpush(self.workfows_queue, workflow.uid)
+            connection.rpush(self.new_workfows_queue, workflow.uid)
 
     def delete_workflow(self, uid, pipeline=None):
         connection = pipeline if pipeline is not None else self._connection
@@ -161,7 +164,7 @@ class RedisController:
             connection.rpush(self.events_queue, task.uid)
 
         if queue:
-            connection.rpush(self.task_queue % (task.tag or "default"), task.uid)
+            connection.rpush(self.queued_tasks_queue % (task.tag or "default"), task.uid)
 
     def delete_task(self, uid, pipeline=None):
         connection = pipeline if pipeline is not None else self._connection

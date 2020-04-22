@@ -64,16 +64,6 @@ class TaskueRunner:
             run_untaged_tasks=self.run_untaged_tasks
         )
 
-    # def _save(self, task):
-    #     pipeline = self._rctrl.pipeline()
-    #     self._rctrl.save_task(task, notify=True, pipeline=pipeline)
-    #     self._rctrl.save_runner()
-    #     pipeline.execute()
-
-        # self._redis_ctrl.save_task(task, notify=True, pipeline=pipeline)
-        # self._redis_ctrl.save_runner(self.name, dict(status=self.status, task=self.current_task))    
-        # pipeline.execute()
-
     def _send_heartbeat(self, timeout=None):
         timeout = (timeout or HEARTBEAT_TIMEOUT) + HEARTBEAT_MAX_DELAY
         self.logger.info("Sending heartbeat with timeout: {}", timeout)
@@ -111,8 +101,6 @@ class TaskueRunner:
     def _start(self):
         self.logger.info("Taskue runner (ID: {}) is running", self.name)
         while True:
-            
-
             if self.rstatus == RunnerStatus.DEAD:
                 break
 
@@ -120,7 +108,6 @@ class TaskueRunner:
                 self._rctrl.update_runner(self.name, status=RunnerStatus.STOPPED)
                 break
 
-            # self._check_status()
 
             self._send_heartbeat()
 
@@ -182,9 +169,9 @@ class TaskueRunner:
         for signal_type in (SIGTERM, SIGKILL, SIGINT):
             gevent.signal(signal_type, self._stop)
 
-        self._queues = [self._rctrl.task_queue % queues for queues in self.queues]
+        self._queues = [self._rctrl.queued_tasks_queue % queues for queues in self.queues]
         if self.run_untaged_tasks:
-            self._queues.append(self._rctrl.task_queue % "default")
+            self._queues.append(self._rctrl.queued_tasks_queue % "default")
 
         self._register()
         self._start()

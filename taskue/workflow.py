@@ -106,8 +106,9 @@ class Workflow(Base):
 class _Workflow(Base):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.namespace = "default"
         self.rctrl = None
+        self.status = kwargs.get("_status", WorkflowStatus.PENDING)
+        self.created_at = kwargs.get("_created_at", time.time())
 
     @property
     def is_last_stage(self):
@@ -183,22 +184,6 @@ class _Workflow(Base):
         else:
             self.status = WorkflowStatus.PASSED
 
-    def queue_task(self, task, pipeline):
-        task.queue()
-        self.rctrl.save_task(task, queue=True, pipeline=pipeline)
-
-    def skip_task(self, task, pipeline):
-        task.skip()
-        self.rctrl.save_task(task, pipeline=pipeline)
-
-    def reschedule_task(self, task, pipeline):
-        task.reschedule()
-        self.rctrl.save_task(task, pipeline=pipeline)
-
-    def terminate_task(self, task, pipeline):
-        task.terminate()
-        self.rctrl.save_task(task, pipeline=pipeline)
-
     def start(self):
         pipeline = self.rctrl.pipeline()
         self.status = WorkflowStatus.RUNNING
@@ -208,15 +193,16 @@ class _Workflow(Base):
     def start_next_stage(self, pipeline, prev_status=None):
         for task in self.current_stage_tasks:
             task = self.rctrl.get_task(task.uid)
+            task.rctrl = self.rctrl
             if (
                 self.current_stage == 1
                 or task.when == Conditions.ALWAYS
                 or (prev_status == StageStatus.PASSED and Conditions.ON_SUCCESS)
                 or (prev_status != StageStatus.PASSED and task.when == Conditions.ON_FAILURE)
             ):
-                self.queue_task(task, pipeline)
+                task.queue(pipeline)
             else:
-                self.skip_task(task, pipeline)
+                task.skip(pipeline)
 
             self.update_task(task)
         self.update(pipeline=pipeline)
@@ -234,8 +220,11 @@ class _Workflow(Base):
                 self.current_stage += 1
                 self.start_next_stage(pipeline, prev_status=status)
 
-        self.rctrl.save_workflow(self, pipeline=pipeline)
+        self.save(pipeline=pipeline)
         pipeline.execute()
+
+    def save(self, queue=False, pipeline=None):
+        self.rctrl.save_workflow(self, queue=queue, pipeline=pipeline)
 
     def __getstate__(self):
         self.rctrl = None

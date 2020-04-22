@@ -1,5 +1,6 @@
 import pickle
 import time
+import uuid
 from enum import Enum
 
 from taskue.utils import Queue, Rediskey
@@ -45,6 +46,8 @@ class Base:
     """ Base task class """
 
     def __init__(self, *args, **kwargs):
+        self._uid = kwargs.get("_uid", uuid.uuid4().hex[:10])
+        self._tid = kwargs.get("_tid", 0)
         self._title = kwargs.get("_title", "Untitled Task")
         self._retries = kwargs.get("_retries", 1)
         self._tag = kwargs.get("_tag", None)
@@ -53,7 +56,6 @@ class Base:
         self._allow_failure = kwargs.get("_allow_failure", False)
         self._enable_rescheduling = kwargs.get("_enable_rescheduling", True)
         self._workflow = kwargs.get("workflow", None)
-        self._tid = kwargs.get("_tid", None)
         self._stage = kwargs.get("_stage", 1)
         self._workload = kwargs.get("_workload", None)
         self._attempts = kwargs.get("_attempts", 0)
@@ -68,6 +70,10 @@ class Base:
         self._skipped_at = kwargs.get("_skipped_at", None)
         self._terminated_at = kwargs.get("_terminated_at", None)
         self._executed_at = kwargs.get("_executed_at", None)
+
+    @property
+    def uid(self):
+        return self._uid
 
     @property
     def title(self):
@@ -96,14 +102,6 @@ class Base:
     @property
     def enable_rescheduling(self):
         return self._enable_rescheduling
-
-    @property
-    def tid(self):
-        return self._tid
-
-    @property
-    def uid(self):
-        return "%s_%s_%s" % (self.workflow, self.stage, self.tid)
 
     @property
     def attempts(self):
@@ -256,8 +254,15 @@ class _Task(Base):
 
     def __init__(self, task: Task):
         super().__init__(**task.__dict__)
+        self.rctrl = None
+        self.status = task.status or TaskStatus.CREATED
+        self.created_at = task.created_at or time.time()
 
-    @Base.tid.setter  # pylint: disable=no-member
+    @property
+    def tid(self):
+        return self._tid
+
+    @tid.setter
     def tid(self, value):
         self._tid = value
 
@@ -313,22 +318,33 @@ class _Task(Base):
     def executed_at(self, value):
         self._executed_at = value
 
-    def queue(self):
+    def queue(self, pipeline=None):
         self.status = TaskStatus.PENDING
         self.queued_at = time.time()
+        self.save(queue=True, pipeline=pipeline)
 
-    def skip(self):
+    def skip(self, pipeline=None):
         self.status = TaskStatus.SKIPPED
         self.skipped_at = time.time()
+        self.save(pipeline=pipeline)
 
-    def reschedule(self):
+    def reschedule(self, pipeline=None):
         self.runner = None
         self.rescheduleded += 1
         self.queued_at = time.time()
+        self.save(pipeline=pipeline)
 
-    def terminate(self):
+    def terminate(self, pipeline):
         self.status = TaskStatus.TERMINATED
         self.terminated_at = time.time()
+        self.save(pipeline=pipeline)
+
+    def save(self, queue=False, notify=False, pipeline=None):
+        self.rctrl.save_task(self, notify=notify, queue=queue, pipeline=pipeline)
+
+    def __getstate__(self):
+        self.rctrl = None
+        return self.__dict__
 
 
 class TaskSummary:

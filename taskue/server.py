@@ -41,20 +41,22 @@ class TaskueServer:
 
                 if runner["status"] == RunnerStatus.BUSY:
                     task = self._rctrl.get_task(runner["task"])
-                    workflow = self._rctrl.get_workflow(task.workflow)
 
                     if task.enable_rescheduling:
                         logger.info("Re-scheduling task {}", runner["task"])
-                        workflow.reschedule_task(task, pipeline)
+                        task.reschedule(pipeline)
                     else:
                         logger.info("Terminate task {}", runner["task"])
-                        workflow.terminate_task(task, pipeline)
+                        task.terminate(pipeline)
 
-                    workflow.update_task(task)
+                    if task.workflow:
+                        workflow = self._rctrl.get_workflow(task.workflow)
+                        workflow.update_task(task)
+                        
+                if task.workflow:
                     workflow.update(pipeline)
 
                 pipeline.execute()
-
             gevent.sleep(HEARTBEAT_TIMEOUT)
 
     def _wait_for_connection(self):
@@ -70,22 +72,29 @@ class TaskueServer:
         while not self._stop_flag:
             try:
                 queue, uid = self._rctrl.blpop(
-                    (self._rctrl.workfows_queue, self._rctrl.events_queue), timeout=BLOCK_TIMEOUT
+                    (self._rctrl.new_workfows_queue, self._rctrl.events_queue), timeout=BLOCK_TIMEOUT
                 )
                 if not (queue and uid):
                     continue
 
-                if queue == self._rctrl.workfows_queue:
+                if queue == self._rctrl.new_workfows_queue:
                     logger.info("Starting workflow {}", uid)
                     workflow = self._rctrl.get_workflow(uid)
                     workflow.rctrl = self._rctrl
                     workflow.start()
 
+                elif queue == self._rctrl.new_tasks_queue:
+                    task = self._rctrl.get_task(uid)
+                    task.rctrl = self._rctrl
+                    task.queue()
+
                 elif queue == self._rctrl.events_queue:
                     task = self._rctrl.get_task(uid)
+                    if not task.workflow:
+                        continue
+                    
                     workflow = self._rctrl.get_workflow(task.workflow)
                     workflow.rctrl = self._rctrl
-
                     if task.status == workflow.get_task_status(task):
                         continue
 

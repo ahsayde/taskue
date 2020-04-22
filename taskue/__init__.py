@@ -24,27 +24,29 @@ class Taskue:
     def namespace(self):
         return self._namespace
 
-    def run(self, stages: list, title: str = None) -> str:
+    def run(self, task: Task):
+        task = _Task(task)
+        task.rctrl = self._rctrl
+        task.queue()
+        return task.uid
+
+    def run_workflow(self, stages: list, title: str = None) -> str:
         pipeline = self._rctrl.pipeline()
         workflow = _Workflow(title=title)
-        workflow.status = WorkflowStatus.PENDING
-        workflow.created_at = time.time()
-        workflow.namespace = self.namespace
+        workflow.rctrl = self._rctrl
 
         for stage, tasks in enumerate(stages):
             workflow.stages.append([])
             for index, task in enumerate(tasks):
                 task = _Task(task)
-                task.namespace = self.namespace
+                task.rctrl = self._rctrl
                 task.tid = index
                 task.stage = stage
                 task.workflow = workflow.uid
-                task.status = TaskStatus.CREATED
-                task.created_at = workflow.created_at
                 workflow.stages[stage].append(TaskSummary(task))
-                self._rctrl.save_task(task, queue=True, pipeline=pipeline)
+                task.save(queue=True, pipeline=pipeline)
 
-        self._rctrl.save_workflow(workflow, queue=True, pipeline=pipeline)
+        workflow.save(queue=True, pipeline=pipeline)
         pipeline.execute()
         return workflow.uid
 
