@@ -29,7 +29,6 @@ class TaskStatus(Enum):
     ERRORED = "errored"
     SKIPPED = "skipped"
     TIMEDOUT = "timedout"
-    DONE = [PASSED, FAILED, ERRORED, TIMEDOUT, SKIPPED, TERMINATED]
 
 
 TASK_DONE_STATES = [
@@ -46,7 +45,7 @@ class Base:
     """ Base task class """
 
     def __init__(self, *args, **kwargs):
-        self._uid = kwargs.get("_uid", uuid.uuid4().hex[:10])
+        self._uid = kwargs.get("_uid", None)
         self._tid = kwargs.get("_tid", 0)
         self._title = kwargs.get("_title", "Untitled Task")
         self._retries = kwargs.get("_retries", 1)
@@ -180,13 +179,13 @@ class Task(Base):
     ):
         Base.__init__(
             self,
-            title=title,
-            retries=retries,
-            tag=tag,
-            timeout=timeout,
-            allow_failure=allow_failure,
-            enable_rescheduling=enable_rescheduling,
-            when=when,
+            _title=title,
+            _retries=retries,
+            _tag=tag,
+            _timeout=timeout,
+            _allow_failure=allow_failure,
+            _enable_rescheduling=enable_rescheduling,
+            _when=when,
         )
 
     @Base.title.setter  # pylint: disable=no-member
@@ -255,6 +254,7 @@ class _Task(Base):
     def __init__(self, task: Task):
         super().__init__(**task.__dict__)
         self.rctrl = None
+        self.uid = task.uid or uuid.uuid4().hex[:10]
         self.status = task.status or TaskStatus.CREATED
         self.created_at = task.created_at or time.time()
 
@@ -265,6 +265,10 @@ class _Task(Base):
     @tid.setter
     def tid(self, value):
         self._tid = value
+
+    @Base.uid.setter # pylint: disable=no-member
+    def uid(self, value):
+        self._uid = value
 
     @Base.stage.setter  # pylint: disable=no-member
     def stage(self, value):

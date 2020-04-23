@@ -51,10 +51,8 @@ class TaskueServer:
 
                     if task.workflow:
                         workflow = self._rctrl.get_workflow(task.workflow)
-                        workflow.update_task(task)
-                        
-                if task.workflow:
-                    workflow.update(pipeline)
+                        workflow.update_task(task)                        
+                        workflow.update(pipeline)
 
                 pipeline.execute()
             gevent.sleep(HEARTBEAT_TIMEOUT)
@@ -80,21 +78,15 @@ class TaskueServer:
                 if queue == self._rctrl.new_workfows_queue:
                     logger.info("Starting workflow {}", uid)
                     workflow = self._rctrl.get_workflow(uid)
-                    workflow.rctrl = self._rctrl
                     workflow.start()
 
                 elif queue == self._rctrl.new_tasks_queue:
                     task = self._rctrl.get_task(uid)
-                    task.rctrl = self._rctrl
                     task.queue()
 
                 elif queue == self._rctrl.events_queue:
                     task = self._rctrl.get_task(uid)
-                    if not task.workflow:
-                        continue
-                    
                     workflow = self._rctrl.get_workflow(task.workflow)
-                    workflow.rctrl = self._rctrl
                     if task.status == workflow.get_task_status(task):
                         continue
 

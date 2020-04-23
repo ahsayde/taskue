@@ -111,7 +111,7 @@ class TaskueRunner:
 
             self._send_heartbeat()
 
-            _, uid = self._rctrl.blpop(self._queues, timeout=HEARTBEAT_TIMEOUT)
+            _, uid = self._rctrl.blpop(set(self._queues), timeout=HEARTBEAT_TIMEOUT)
             if not uid:
                 continue
 

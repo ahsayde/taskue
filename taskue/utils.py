@@ -12,6 +12,7 @@ class Rediskey:
     WORKFLOW = "taskue:{ns}:workflow:{uid}"
     WORKFLOWS = "taskue:{ns}:workflows"
     TASK = "taskue:{ns}:task:{uid}"
+    TASKS = "taskue:{ns}:tasks"
 
 
 class Queue:
@@ -124,16 +125,18 @@ class RedisController:
     def get_workflow(self, uid):
         blob = self._connection.get(Rediskey.WORKFLOW.format(ns=self.namespace, uid=uid))
         if blob:
-            return pickle.loads(blob)
+            workflow = pickle.loads(blob)
+            workflow.rctrl = self
+            return workflow
 
     def save_workflow(self, workflow, queue=False, pipeline=None):
         connection = pipeline if pipeline is not None else self._connection
-        connection.set(
-            Rediskey.WORKFLOW.format(ns=self.namespace, uid=workflow.uid), pickle.dumps(workflow),
-        )
+        key = Rediskey.WORKFLOW.format(ns=self.namespace, uid=workflow.uid)
+        connection.set(key, pickle.dumps(workflow))
+
         if queue:
             connection.zadd(
-                Rediskey.WORKFLOWS.format(ns=self.namespace), workflow.uid, workflow.created_at,
+                Rediskey.WORKFLOWS.format(ns=self.namespace), key, workflow.created_at,
             )
             connection.rpush(self.new_workfows_queue, workflow.uid)
 
@@ -142,33 +145,53 @@ class RedisController:
         connection.delete(Rediskey.WORKFLOW.format(ns=self.namespace, uid=uid))
         connection.zrem(Rediskey.WORKFLOWS.format(ns=self.namespace), uid)
         # delete tasks
-        tasks_keys_pattern = Rediskey.TASK.format(ns=self.namespace, uid="%s_*" % uid)
-        tasks_keys = connection.keys(tasks_keys_pattern)
-        connection.delete(*tasks_keys)
+        # tasks_keys_pattern = Rediskey.TASKS.format(ns=self.namespace, uid="%s_*" % uid)
+        # tasks_keys = connection.keys(tasks_keys_pattern)
+        # connection.delete(*tasks_keys)
 
     def list_workflows(self, start, end, pipeline=None):
         connection = pipeline if pipeline is not None else self._connection
-        return connection.zrange(Rediskey.WORKFLOWS.format(ns=self.namespace), start, end)
+        keys = connection.zrange(Rediskey.WORKFLOWS.format(ns=self.namespace), start, end, desc=True)
+        if keys:
+            results = connection.mget(keys)
+            for blob in results:
+                if blob:
+                    yield pickle.loads(blob)
 
     def get_task(self, uid):
         blob = self._connection.get(Rediskey.TASK.format(ns=self.namespace, uid=uid))
         if blob:
-            return pickle.loads(blob)
+            task = pickle.loads(blob)
+            task.rctrl = self
+            return task
 
     def save_task(self, task, notify=False, queue=False, pipeline=None):
         connection = pipeline if pipeline is not None else self._connection
-        connection.set(
-            Rediskey.TASK.format(ns=self.namespace, uid=task.uid), pickle.dumps(task),
-        )
+        key = Rediskey.TASK.format(ns=self.namespace, uid=task.uid)
+        connection.set(key, pickle.dumps(task))
+        
         if notify:
             connection.rpush(self.events_queue, task.uid)
 
         if queue:
+            connection.zadd(
+                Rediskey.TASKS.format(ns=self.namespace), key, task.created_at,
+            )
             connection.rpush(self.queued_tasks_queue % (task.tag or "default"), task.uid)
+
+    def list_tasks(self, start, end, pipeline=None):
+        connection = pipeline if pipeline is not None else self._connection
+        keys = connection.zrange(Rediskey.TASKS.format(ns=self.namespace), start, end, desc=True)
+        if keys:
+            results = connection.mget(keys)
+            for blob in results:
+                if blob:
+                    yield pickle.loads(blob)
+
 
     def delete_task(self, uid, pipeline=None):
         connection = pipeline if pipeline is not None else self._connection
-        connection.delete(Rediskey.TASK.format(ns=self.namespace, uid=uid))
+        connection.hdel(Rediskey.TASK.format(ns=self.namespace, uid=uid))
 
 
 logging_format = "<light-blue>{time: YYYY-MM-DD at HH:mm:ss}</> | {extra[app]} | <level>{level}</> | <level>{message}</>"

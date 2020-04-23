@@ -3,16 +3,41 @@ import sys
 import time
 from redis import Redis
 from uuid import uuid4
+from functools import wraps
 
 from taskue.utils import RedisController
-from taskue.task import Task, _Task, TaskStatus, TaskResult, TaskSummary, TASK_DONE_STATES
+from taskue.task import Task, _Task, TaskStatus, TaskResult, TaskSummary, TASK_DONE_STATES, Conditions
 from taskue.workflow import (
-    Workflow,
     _Workflow,
     WorkflowResult,
     WorkflowStatus,
     WORKFLOW_DONE_STATES,
 )
+
+
+def task(
+    title: str = None,
+    retries: int = 1,
+    tag: str = None,
+    timeout: int = None,
+    allow_failure: bool = False,
+    enable_rescheduling: bool = True,
+    when: str = Conditions.ON_SUCCESS,
+): 
+    def decorator(func): 
+        def wrapper(*args, **kwargs):
+            t = Task()
+            t.title = title
+            t.retries = retries
+            t.tag = tag
+            t.timeout = timeout
+            t.allow_failure = allow_failure
+            t.enable_rescheduling = enable_rescheduling
+            t.when = when
+            t.execute(func, *args, *kwargs)
+            return t
+        return wrapper 
+    return decorator 
 
 
 class Taskue:
@@ -25,30 +50,29 @@ class Taskue:
         return self._namespace
 
     def run(self, task: Task):
-        task = _Task(task)
-        task.rctrl = self._rctrl
-        task.queue()
-        return task.uid
+        _task = _Task(task)
+        _task.rctrl = self._rctrl
+        _task.queue()
+        return _task.uid
 
     def run_workflow(self, stages: list, title: str = None) -> str:
         pipeline = self._rctrl.pipeline()
-        workflow = _Workflow(title=title)
-        workflow.rctrl = self._rctrl
+        _workflow = _Workflow()
+        _workflow.title = title
 
         for stage, tasks in enumerate(stages):
-            workflow.stages.append([])
+            _workflow.stages.append([])
             for index, task in enumerate(tasks):
-                task = _Task(task)
-                task.rctrl = self._rctrl
-                task.tid = index
-                task.stage = stage
-                task.workflow = workflow.uid
-                workflow.stages[stage].append(TaskSummary(task))
-                task.save(queue=True, pipeline=pipeline)
+                _task = _Task(task)
+                _task.tid = index
+                _task.stage = stage
+                _task.workflow = _workflow.uid
+                _workflow.stages[stage].append(TaskSummary(_task))
+                self._rctrl.save_task(_task, queue=True, pipeline=pipeline)
 
-        workflow.save(queue=True, pipeline=pipeline)
+        self._rctrl.save_workflow(_workflow, queue=True, pipeline=pipeline)
         pipeline.execute()
-        return workflow.uid
+        return _workflow.uid
 
     def namespace_list(self):
         return self._rctrl.list_namespaces()
@@ -68,8 +92,7 @@ class Taskue:
     def workflow_list(self, page=1, limit=25):
         start = (page - 1) * limit
         end = (page * limit) - 1
-        for uid in self._rctrl.list_workflows(start, end):
-            yield uid.decode()
+        return self._rctrl.list_workflows(start, end)
 
     def workflow_get(self, uid):
         workflow = self._rctrl.get_workflow(uid)
@@ -109,6 +132,11 @@ class Taskue:
                 time.sleep(1)
         else:
             raise TimeoutError("timeout")
+
+    def task_list(self, page=1, limit=25):
+        start = (page - 1) * limit
+        end = (page * limit) - 1
+        return self._rctrl.list_tasks(start, end)
 
 
 class RunnerNotFound(Exception):

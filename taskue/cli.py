@@ -18,6 +18,14 @@ CONFIG_PATH = os.path.expanduser("~/.taskue.toml")
 pathlib.Path(CONFIG_PATH).touch(exist_ok=True)
 
 
+status_color_map = {
+    "running": "blue",
+    "passed": "green",
+    "failed": "red",
+    "errored": "red",
+    "pending": "yellow"
+}
+
 def load_config():
     content = pathlib.Path(CONFIG_PATH).read_text()
     try:
@@ -43,6 +51,7 @@ def validate_config(config):
 
 
 def success(message):
+    click.echo(click.style("Namespace [default]", bg="yellow", fg="black"))
     click.echo(click.style(message, fg="white"))
     sys.exit()
 
@@ -101,263 +110,46 @@ def cli(ctx=None, namespace=None):
 
 
 @cli.group()
-@click.option("--namespace", "-n", default=None, type=str, help="Namespace")
-@click.pass_context
-def start(ctx):
-    """Start resources (server/runner)"""
-    pass
-
-
-@cli.group()
-@click.pass_context
-def switch(ctx):
-    """Switch to resources (namespace)"""
-    pass
-
-
-@cli.group()
-@click.pass_context
-def get(ctx):
-    """Get reseources (workflow, task)"""
-    pass
-
-
-@cli.group(name="list")
-@click.pass_context
-def list_(ctx):
-    """List resources (namespace, runner, workflow, task)"""
-    pass
-
-
-@cli.group()
-@click.pass_context
-def delete(ctx):
-    """Delete resources (namespace, workflow)"""
-    pass
-
-
-@cli.group()
-@click.pass_context
-def wait(ctx):
-    """Wait for resources to finish (workflow, task)"""
-    pass
-
-
-@cli.group()
 @click.pass_context
 def config(ctx):
-    """Manage the CLI configuration"""
+    """Manage config"""
     pass
 
 
-## Switch ################################################
-
-
-@switch.command(name="namespace", help="Switch to namespace")
-@click.argument("name", type=str)
+@cli.group()
 @click.pass_context
-def namespace_switch(ctx, name):
-    ctx.obj["config"].update(namespace=name)
-    save_config(ctx.obj["config"])
-    success("switched to namespace %s" % name)
+def namespace(ctx):
+    """Manage namespaces"""
+    pass
 
 
-## Start #################################################
-
-
-@start.command(name="server", help="Start taskue server")
+@cli.group()
 @click.pass_context
-def server_start(ctx):
-    server = TaskueServer(ctx.obj["redis"], ctx.obj["namespace"])
-    server.start()
+def server(ctx):
+    """Manage server"""
+    pass
 
 
-@start.command(name="runner", help="Start new taskue runner")
-@click.option("--name", "-n", default=None, type=str, help="Runner name (should be unique)")
-@click.option("--timeout", "-t", default=3600, type=int, help="Runner default timeout")
-@click.option("--queues", "-q", multiple=True, type=str, default=None)
-@click.option("--run-untaged-tasks", "-a", is_flag=True)
+@cli.group()
 @click.pass_context
-def runner_start(ctx, name, queues, timeout, run_untaged_tasks):
-    runner = TaskueRunner(
-        ctx.obj["redis"],
-        namespace=ctx.obj["namespace"],
-        name=name,
-        queues=queues,
-        timeout=timeout,
-        run_untaged_tasks=run_untaged_tasks,
-    )
-    runner.start()
+def runner(ctx):
+    """start and list runners"""
+    pass
 
-
-### Get #########################################################
-
-
-@get.command(name="namespace", help="Get current namespace")
+@cli.group()
 @click.pass_context
-def namespace_get(ctx):
-    click.echo(ctx.obj["namespace"])
+def workflow(ctx):
+    """list, get, wait and delete workflows"""
+    pass
 
-
-@get.command(name="workflow", help="Get workflow info")
-@click.argument("uid", type=str)
+@cli.group()
 @click.pass_context
-def workflow_get(ctx, uid):
-    try:
-        workflow = ctx.obj["taskue"].workflow_get(uid)
-    except WorkflowNotFound as e:
-        return click.echo(str(e), err=True)
-
-    click.echo(
-        tabulate(
-            {
-                "UID": workflow.uid,
-                "TITLE": workflow.title,
-                "STATUS": workflow.status.value,
-                "CREATED AT": format_timestamp(workflow.created_at),
-                "STARTED AT": format_timestamp(workflow.started_at),
-                "DONE AT": format_timestamp(workflow.done_at) if workflow.done_at else "",
-            }
-        )
-    )
-
-    tasks = []
-    for stage in workflow.stages:
-        for task in stage:
-            tasks.append(
-                {
-                    "UID": task.uid,
-                    "TITLE": task.title,
-                    "STAGE": task.stage + 1,
-                    "STATUS": task.status.value,
-                    "ALLOWED TO FAIL": task.allow_failure,
-                }
-            )
-
-    click.echo("TASKS", nl=True)
-    click.echo(tabulate(tasks))
+def task(ctx):
+    """list, get and wait tasks"""
+    pass
 
 
-@get.command(name="task", help="Get task info")
-@click.argument("uid", type=str)
-@click.pass_context
-def task_get(ctx, uid):
-    try:
-        task = ctx.obj["taskue"].task_get(uid)
-    except TaskNotFound as e:
-        return click.echo(str(e), err=True)
-
-    click.echo(tabulate({"UID": task.uid, "TITLE": task.title, "STATUS": task.status.value,}, 15))
-
-
-### List #########################################################
-
-
-@list_.command(name="namespace", help="List namespaces")
-@click.pass_context
-def namespace_list(ctx):
-    results = []
-    namespaces = ctx.obj["taskue"].namespace_list()
-    for namespace in namespaces:
-        results.append(
-            {"NAME": namespace["name"], "CREATED AT": format_timestamp(namespace["timestamp"])}
-        )
-
-    click.echo(tabulate(results))
-
-
-@list_.command(name="runner", help="List runners")
-@click.pass_context
-def runner_list(ctx):
-    results = []
-    client = ctx.obj["taskue"]
-    for uid in client.runner_list():
-        runner = client.runner_get(uid)
-        results.append(
-            {
-                "NAME": runner["name"],
-                "STATUS": runner["status"],
-                "TAGS": runner["tags"],
-                "TIMEOUT": runner["timeout"],
-            }
-        )
-    click.echo(tabulate(results))
-
-
-@list_.command(name="workflow", help="List workflows")
-@click.pass_context
-@click.option("--page", "-p", default=1, type=int, help="page number")
-@click.option("--limit", "-l", default=25, type=int, help="results per page")
-def workflow_list(ctx, page, limit):
-    results = []
-    for uid in ctx.obj["taskue"].workflow_list(page=page, limit=limit):
-        workflow = ctx.obj["taskue"].workflow_get(uid)
-        results.append(
-            {
-                "UID": workflow.uid,
-                "TITLE": workflow.title,
-                "STATUS": workflow.status.value,
-                "CREATED AT": format_timestamp(workflow.created_at),
-            }
-        )
-    click.echo(tabulate(results))
-
-
-### Delete #########################################################
-
-
-@delete.command(name="namespace", help="Delete namespace")
-@click.argument("name", type=str)
-@click.confirmation_option(prompt="Are you sure you want to delete the namespace?")
-@click.pass_context
-def namespace_delete(ctx, name):
-    ctx.obj["taskue"].namespace_delete(name)
-    success("namespace is deleted")
-
-
-@delete.command(name="workflow", help="Delete workflow (it must be finished)")
-@click.argument("uid", type=str)
-@click.pass_context
-def workflow_delete(ctx, uid):
-    try:
-        ctx.obj["taskue"].workflow_delete(uid)
-    except WorkflowNotFound as e:
-        return fail(str(e))
-
-    success("workflow is deleted")
-
-
-### Wait ################################################
-
-
-@wait.command(name="workflow", help="Wait for workflow to finish")
-@click.argument("uid", type=str)
-@click.option("--timeout", "-t", default=60, type=int, help="timeout in seconds")
-@click.pass_context
-def workflow_wait(ctx, uid, timeout):
-    try:
-        ctx.obj["taskue"].workflow_wait(uid, timeout)
-    except Exception as e:
-        fail(str(e))
-    else:
-        success("workflow is finished")
-
-
-@wait.command(name="task", help="Wait for task to finish")
-@click.argument("uid", type=str)
-@click.option("--timeout", "-t", default=60, type=int, help="timeout in seconds")
-@click.pass_context
-def task_wait(ctx, uid, timeout):
-    try:
-        ctx.obj["taskue"].task_wait(uid, timeout)
-    except Exception as e:
-        fail(str(e))
-    else:
-        success("task is finished")
-
-
-### Config ################################################
-
+## Config
 
 @config.command(name="show", help="Show current configuration")
 @click.pass_context
@@ -402,6 +194,219 @@ def config_reset(ctx):
     save_config(DEFAULT_CONFIG, validate=False)
     success("configuration is updated")
 
+
+## Namespace
+
+@namespace.command(name="list", help="List namespaces")
+@click.pass_context
+def namespace_list(ctx):
+    results = []
+    namespaces = ctx.obj["taskue"].namespace_list()
+    for namespace in namespaces:
+        results.append(
+            {"NAME": namespace["name"], "CREATED AT": format_timestamp(namespace["timestamp"])}
+        )
+    click.echo(tabulate(results))
+
+
+@namespace.command(name="get", help="Get current namespace")
+@click.pass_context
+def namespace_get(ctx):
+    click.echo(ctx.obj["namespace"])
+
+
+@namespace.command(name="switch", help="Switch to namespace")
+@click.argument("name", type=str)
+@click.pass_context
+def namespace_switch(ctx, name):
+    ctx.obj["config"].update(namespace=name)
+    save_config(ctx.obj["config"])
+    success("switched to namespace %s" % name)
+
+
+@namespace.command(name="delete", help="Delete namespace")
+@click.argument("name", type=str)
+@click.confirmation_option(prompt="Are you sure you want to delete the namespace?")
+@click.pass_context
+def namespace_delete(ctx, name):
+    ctx.obj["taskue"].namespace_delete(name)
+    success("namespace is deleted")
+
+
+## Server
+
+@server.command(name="start", help="Start taskue server")
+@click.pass_context
+def server_start(ctx):
+    server = TaskueServer(ctx.obj["redis"], ctx.obj["namespace"])
+    server.start()
+
+
+## Runner 
+
+@runner.command(name="start", help="Start new taskue runner")
+@click.option("--name", "-n", default=None, type=str, help="Runner name (should be unique)")
+@click.option("--timeout", "-t", default=3600, type=int, help="Runner default timeout")
+@click.option("--queues", "-q", multiple=True, type=str, default=None)
+@click.option("--run-untaged-tasks", "-a", is_flag=True)
+@click.pass_context
+def runner_start(ctx, name, queues, timeout, run_untaged_tasks):
+    runner = TaskueRunner(
+        ctx.obj["redis"],
+        namespace=ctx.obj["namespace"],
+        name=name,
+        queues=queues,
+        timeout=timeout,
+        run_untaged_tasks=run_untaged_tasks,
+    )
+    runner.start()
+
+
+@runner.command(name="list", help="List runners")
+@click.pass_context
+def runner_list(ctx):
+    results = []
+    client = ctx.obj["taskue"]
+    for runner in client.runner_list():
+        results.append(
+            {
+                "NAME": runner["name"],
+                "STATUS": runner["status"],
+                "QUEUES": runner["queues"],
+                "TIMEOUT": runner["timeout"],
+            }
+        )
+    click.echo(tabulate(results))
+
+
+## Workflow
+
+@workflow.command(name="list", help="List workflows")
+@click.pass_context
+@click.option("--page", "-p", default=1, type=int, help="page number")
+@click.option("--limit", "-l", default=25, type=int, help="results per page")
+def workflow_list(ctx, page, limit):
+    results = []
+    for workflow in ctx.obj["taskue"].workflow_list(page=page, limit=limit):
+        results.append(
+            {
+                "UID": workflow.uid,
+                "TITLE": workflow.title,
+                "STATUS": workflow.status.value,
+                "CREATED AT": format_timestamp(workflow.created_at),
+            }
+        )
+    success(tabulate(results))
+
+
+@workflow.command(name="get", help="Get workflow info")
+@click.argument("uid", type=str)
+@click.pass_context
+def workflow_get(ctx, uid):
+    try:
+        workflow = ctx.obj["taskue"].workflow_get(uid)
+    except WorkflowNotFound as e:
+        return click.echo(str(e), err=True)
+
+    click.echo(
+        tabulate(
+            {
+                "UID": workflow.uid,
+                "TITLE": workflow.title,
+                "STATUS": workflow.status.value,
+                "CREATED AT": format_timestamp(workflow.created_at),
+                "STARTED AT": format_timestamp(workflow.started_at),
+                "DONE AT": format_timestamp(workflow.done_at) if workflow.done_at else "",
+            }
+        )
+    )
+
+    tasks = []
+    for stage in workflow.stages:
+        for task in stage:
+            tasks.append(
+                {
+                    "UID": task.uid,
+                    "TITLE": task.title,
+                    "STAGE": task.stage + 1,
+                    "STATUS": task.status.value,
+                    "ALLOWED TO FAIL": task.allow_failure,
+                }
+            )
+
+    click.echo("TASKS", nl=True)
+    click.echo(tabulate(tasks))
+
+
+@workflow.command(name="wait", help="Wait for workflow to finish")
+@click.argument("uid", type=str)
+@click.option("--timeout", "-t", default=60, type=int, help="timeout in seconds")
+@click.pass_context
+def workflow_wait(ctx, uid, timeout):
+    try:
+        ctx.obj["taskue"].workflow_wait(uid, timeout)
+    except Exception as e:
+        fail(str(e))
+    else:
+        success("workflow is finished")
+
+
+@workflow.command(name="delete", help="Delete workflow (it must be finished)")
+@click.argument("uid", type=str)
+@click.pass_context
+def workflow_delete(ctx, uid):
+    try:
+        ctx.obj["taskue"].workflow_delete(uid)
+    except WorkflowNotFound as e:
+        return fail(str(e))
+
+    success("workflow is deleted")
+
+
+## Task
+
+@task.command(name="get", help="Get task info")
+@click.argument("uid", type=str)
+@click.pass_context
+def task_get(ctx, uid):
+    try:
+        task = ctx.obj["taskue"].task_get(uid)
+    except TaskNotFound as e:
+        return click.echo(str(e), err=True)
+
+    click.echo(tabulate({"UID": task.uid, "TITLE": task.title, "STATUS": task.status.value,}, 15))
+
+
+@task.command(name="wait", help="Wait for task to finish")
+@click.argument("uid", type=str)
+@click.option("--timeout", "-t", default=60, type=int, help="timeout in seconds")
+@click.pass_context
+def task_wait(ctx, uid, timeout):
+    try:
+        ctx.obj["taskue"].task_wait(uid, timeout)
+    except Exception as e:
+        fail(str(e))
+    else:
+        success("task is finished")
+
+
+@task.command(name="list", help="List tasks")
+@click.pass_context
+@click.option("--page", "-p", default=1, type=int, help="page number")
+@click.option("--limit", "-l", default=25, type=int, help="results per page")
+def task_list(ctx, page, limit):
+    results = []
+    for task in ctx.obj["taskue"].task_list(page=page, limit=limit):
+        results.append(
+            {
+                "UID": task.uid or "",
+                "TITLE": task.title or "",
+                "STATUS": click.style(task.status.value or "", fg=status_color_map.get(task.status.value)),
+                "WORKFLOW": task.workflow or "",
+                "CREATED AT": format_timestamp(task.created_at) or "",
+            }
+        )
+    success(tabulate(results))
 
 if __name__ == "__main__":
     cli()

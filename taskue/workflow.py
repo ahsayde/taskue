@@ -7,7 +7,7 @@ from taskue.utils import RedisController
 from taskue.task import _Task, TaskStatus, TaskSummary, Conditions, TASK_DONE_STATES
 
 
-__all__ = ("Workflow", "WorkflowStatus", "StageStatus", "WorkflowResult")
+__all__ = ("WorkflowStatus", "StageStatus", "WorkflowResult")
 
 
 class WorkflowStatus(Enum):
@@ -15,7 +15,6 @@ class WorkflowStatus(Enum):
     RUNNING = "running"
     PASSED = "passed"
     FAILED = "failed"
-    DONE = [PASSED, FAILED]
 
 
 class StageStatus(Enum):
@@ -23,7 +22,6 @@ class StageStatus(Enum):
     RUNNING = "running"
     PASSED = "passed"
     FAILED = "failed"
-    DONE = [PASSED, FAILED]
 
 
 WORKFLOW_DONE_STATES = [WorkflowStatus.PASSED, WorkflowStatus.FAILED]
@@ -92,17 +90,6 @@ class WorkflowResult(Base):
         return self.status == WorkflowStatus.FAILED
 
 
-class Workflow(Base):
-    """ Workflow external class """
-
-    def __init__(self, title: str = None):
-        super().__init__(title=title)
-
-    @Base.title.setter  # pylint: disable=no-member
-    def title(self, value):
-        self._title = value
-
-
 class _Workflow(Base):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -129,6 +116,10 @@ class _Workflow(Base):
     @current_stage.setter
     def current_stage(self, value):
         self._current_stage = value
+
+    @Base.title.setter  # pylint: disable=no-member
+    def title(self, value):
+        self._title = value
 
     @Base.status.setter  # pylint: disable=no-member
     def status(self, value):
@@ -193,7 +184,6 @@ class _Workflow(Base):
     def start_next_stage(self, pipeline, prev_status=None):
         for task in self.current_stage_tasks:
             task = self.rctrl.get_task(task.uid)
-            task.rctrl = self.rctrl
             if (
                 self.current_stage == 1
                 or task.when == Conditions.ALWAYS
