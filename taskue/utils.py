@@ -47,6 +47,9 @@ class RedisController:
         for key, value in ddict.items():
             result[key.decode()] = value.decode()
         return result
+    
+    def lock(self, name):
+        return self._connection.lock(name, sleep=0.01)
 
     def blpop(self, queues, timeout=None):
         queue = data = None
@@ -122,12 +125,16 @@ class RedisController:
             Rediskey.HEARTBEAT.format(ns=self.namespace, name=name), "", ex=timeout,
         )
 
-    def get_workflow(self, uid):
-        blob = self._connection.get(Rediskey.WORKFLOW.format(ns=self.namespace, uid=uid))
+    def get_workflow(self, uid, pipeline=None):
+        connection = pipeline if pipeline is not None else self._connection
+        blob = connection.get(Rediskey.WORKFLOW.format(ns=self.namespace, uid=uid))
         if blob:
             workflow = pickle.loads(blob)
             workflow.rctrl = self
             return workflow
+
+    def watch_workflow(self, uid, pipeline):
+        self._connection.watch(Rediskey.WORKFLOW.format(ns=self.namespace, uid=uid))
 
     def save_workflow(self, workflow, queue=False, pipeline=None):
         connection = pipeline if pipeline is not None else self._connection

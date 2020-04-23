@@ -185,7 +185,7 @@ class _Workflow(Base):
         for task in self.current_stage_tasks:
             task = self.rctrl.get_task(task.uid)
             if (
-                self.current_stage == 1
+                self.current_stage == 0
                 or task.when == Conditions.ALWAYS
                 or (prev_status == StageStatus.PASSED and Conditions.ON_SUCCESS)
                 or (prev_status != StageStatus.PASSED and task.when == Conditions.ON_FAILURE)
@@ -217,5 +217,6 @@ class _Workflow(Base):
         self.rctrl.save_workflow(self, queue=queue, pipeline=pipeline)
 
     def __getstate__(self):
-        self.rctrl = None
-        return self.__dict__
+        data = self.__dict__.copy()
+        del data["rctrl"]
+        return data

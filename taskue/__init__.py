@@ -68,7 +68,7 @@ class Taskue:
                 _task.stage = stage
                 _task.workflow = _workflow.uid
                 _workflow.stages[stage].append(TaskSummary(_task))
-                self._rctrl.save_task(_task, queue=True, pipeline=pipeline)
+                self._rctrl.save_task(_task, pipeline=pipeline)
 
         self._rctrl.save_workflow(_workflow, queue=True, pipeline=pipeline)
         pipeline.execute()

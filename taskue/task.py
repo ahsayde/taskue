@@ -347,8 +347,9 @@ class _Task(Base):
         self.rctrl.save_task(self, notify=notify, queue=queue, pipeline=pipeline)
 
     def __getstate__(self):
-        self.rctrl = None
-        return self.__dict__
+        data = self.__dict__.copy()
+        del data["rctrl"]
+        return data
 
 
 class TaskSummary:
