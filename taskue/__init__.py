@@ -15,31 +15,6 @@ from taskue.workflow import (
 )
 
 
-def task(
-    title: str = None,
-    retries: int = 1,
-    tag: str = None,
-    timeout: int = None,
-    allow_failure: bool = False,
-    enable_rescheduling: bool = True,
-    when: str = Conditions.ON_SUCCESS,
-): 
-    def decorator(func): 
-        def wrapper(*args, **kwargs):
-            t = Task()
-            t.title = title
-            t.retries = retries
-            t.tag = tag
-            t.timeout = timeout
-            t.allow_failure = allow_failure
-            t.enable_rescheduling = enable_rescheduling
-            t.when = when
-            t.execute(func, *args, *kwargs)
-            return t
-        return wrapper 
-    return decorator 
-
-
 class Taskue:
     def __init__(self, redis_conn: Redis, namespace: str = "default"):
         self._namespace = namespace

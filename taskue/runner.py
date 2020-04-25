@@ -12,7 +12,6 @@ import gevent
 import redis
 import gc
 import objgraph
-from enum import Enum
 from taskue.task import _Task, TaskStatus
 from taskue.utils import RedisController, logger
 
@@ -21,7 +20,7 @@ HEARTBEAT_TIMEOUT = 10
 HEARTBEAT_MAX_DELAY = 5
 
 
-class RunnerStatus(Enum):
+class RunnerStatus:
     IDEL = "idel"
     BUSY = "busy"
     STOPPED = "stopped"
@@ -45,10 +44,29 @@ class TaskueRunner:
         self.timeout = timeout
         self.run_untaged_tasks = run_untaged_tasks
         self.logger = logger.bind(app="RUNNER %s" % self.name)
-        self._stop_flag = False
+        self._die = False
         self._queues = []
         self._rctrl = RedisController(redis_conn, namespace)
-        self._rlock = self._rctrl.lock("runner")
+
+    def _register(self):
+        self._rctrl.register_runner(
+            name=self.name,
+            namespace=self.namespace,
+            status=RunnerStatus.IDEL,
+            queues=self.queues,
+            timeout=self.timeout,
+            run_untaged_tasks=self.run_untaged_tasks
+        )
+
+    def _monitor_runners(self):
+        pass
+
+    def _send_heartbeat(self):
+        pass
+
+    def _update(self, pipeline=None, **kwargs):
+        self._rctrl.update_runner(self.name, pipeline, **kwargs)
+
 
     def _execute_task(self, task):
         func, args, kwargs = task.workload
@@ -72,27 +90,32 @@ class TaskueRunner:
                 break
 
     def _start(self):
-        self.logger.info("Taskue runner (ID: {}) is running", self.name)
-        start = time.time()
-        while not self._stop_flag:
+        while not self._die:
+
+            if self._die:
+                self._update(status=RunnerStatus.STOPPED)
+                break
 
             queue, uid = self._rctrl.blpop(self._queues, timeout=3)
             if not (queue and uid):
-                print("**********************", time.time() - start)
                 continue
 
             if queue == self._rctrl.new_workfows_queue:
-                self.logger.info("Starting workflow {}", uid)
                 workflow = self._rctrl.get_workflow(uid)
+                self.logger.info("start workflow {}", workflow.title)
                 workflow.start()
             else:
                 task = self._rctrl.get_task(uid)
                 task.runner = self.name
                 task.status = TaskStatus.RUNNING
                 task.started_at = time.time()
-                task.save()
+
+                with self._rctrl.pipeline() as pipeline:
+                    task.save(pipeline=pipeline)
+                    self._update(pipeline=pipeline, status=RunnerStatus.BUSY, task=task.uid)
+
+                self.logger.info("executing task {}", task.title)
                 try:
-                    self.logger.info("Picked task {} up", task.uid)
                     self._execute_task(task)
 
                 except gevent.Timeout:
@@ -109,33 +132,21 @@ class TaskueRunner:
                 finally:
                     task.executed_at = time.time()
 
-                pipeline = self._rctrl.pipeline()
-                task.rctrl = self._rctrl
-                task.save(pipeline=pipeline)
+                with self._rctrl.pipeline() as pipeline:
+                    task.save(pipeline=pipeline)
+                    if task.workflow:
+                        with self._rctrl.lock(task.workflow):
+                            workflow = self._rctrl.get_workflow(task.workflow)
+                            workflow.update_task(task)
+                            workflow.update(pipeline=pipeline)
 
-                if task.workflow:
-                    # with self._rctrl.lock(task.workflow):
-                    workflow = self._rctrl.get_workflow(task.workflow)
-                    workflow.update_task(task)
-                    workflow.update(pipeline=pipeline)
+                    self._update(pipeline, status=RunnerStatus.IDEL, task=0)
                     pipeline.execute()
-                else:
-                    pipeline.execute()
-
-    def _wait_for_connection(self):
-        while not self._stop_flag:
-            try:
-                if self._rctrl.ping():
-                    self.logger.success("Redis connection is established, back to work")
-                    break
-            except redis.exceptions.ConnectionError:
-                gevent.sleep(5)
 
     def _stop(self):
-        if not self._stop_flag:
-            self.logger.info("Shutting down, please wait ...")
-            self._stop_flag = True
-            self._rctrl.update_runner(self.name, status=RunnerStatus.STOPPING)
+        if not self._die:
+            self._die = True
+            self._update(status=RunnerStatus.STOPPING)
 
     def start(self):
         """ Start the runner """
@@ -145,15 +156,18 @@ class TaskueRunner:
         if self.run_untaged_tasks:
             self.queues.insert(0, "default")
 
-        self._queues = [self._rctrl.new_workfows_queue, self._rctrl.events_queue]
         for queue in self.queues:
             self._queues.append(self._rctrl.queued_tasks_queue % queue)
+        
+        self._queues.append(self._rctrl.new_workfows_queue)
 
-        # self._register()
+        self.logger.info("Taskue runner (name: {}) is running", self.name)
+        self._register()
         self._start()
 
     def stop(self):
         """ Stop the runner gracefully """
+        self.logger.info("Shutting down gracefully, please wait ...")
         self._stop()
 
 

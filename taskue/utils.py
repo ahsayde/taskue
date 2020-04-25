@@ -87,11 +87,12 @@ class RedisController:
         if runner:
             return self.decode_bytes(runner)
 
-    def register_runner(self, name, status, queues, timeout, run_untaged_tasks):
+    def register_runner(self, name, namespace, status, queues, timeout, run_untaged_tasks):
         self._connection.hmset(
             Rediskey.RUNNER.format(ns=self.namespace, name=name),
             {
                 "name": name,
+                "namespace": namespace,
                 "status": status,
                 "timeout": timeout,
                 "queues": ",".join(queues),
@@ -143,7 +144,7 @@ class RedisController:
 
         if queue:
             connection.zadd(
-                Rediskey.WORKFLOWS.format(ns=self.namespace), key, workflow.created_at,
+                Rediskey.WORKFLOWS.format(ns=self.namespace), {key: workflow.created_at},
             )
             connection.rpush(self.new_workfows_queue, workflow.uid)
 
@@ -182,7 +183,7 @@ class RedisController:
 
         if queue:
             connection.zadd(
-                Rediskey.TASKS.format(ns=self.namespace), key, task.created_at,
+                Rediskey.TASKS.format(ns=self.namespace), {key: task.created_at},
             )
             connection.rpush(self.queued_tasks_queue % (task.tag or "default"), task.uid)
 
