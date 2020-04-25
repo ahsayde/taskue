@@ -13,6 +13,7 @@ class Rediskey:
     WORKFLOWS = "taskue:{ns}:workflows"
     TASK = "taskue:{ns}:task:{uid}"
     TASKS = "taskue:{ns}:tasks"
+    MONITORING = "taskue:{ns}:monitoring"
 
 
 class Queue:
@@ -20,7 +21,6 @@ class Queue:
     NEW_TASKS = "taskue:{ns}:new:tasks"
     QUEUED_TASKS = "taskue:{ns}:queued:tasks:%s"
     EVENTS = "taskue:{ns}:events"
-
 
 
 class RedisController:
@@ -47,7 +47,7 @@ class RedisController:
         for key, value in ddict.items():
             result[key.decode()] = value.decode()
         return result
-    
+
     def lock(self, name):
         return self._connection.lock(name, sleep=0.01)
 
@@ -62,7 +62,7 @@ class RedisController:
         return queue, data
 
         # def namespace_list(self):
-    
+
     def list_namespaces(self):
         namespaces = self._connection.hscan_iter(Rediskey.NAMESPACES)
         for item in namespaces:
@@ -103,16 +103,15 @@ class RedisController:
     def is_healthy_runner(self, name):
         return self._connection.exists(Rediskey.HEARTBEAT.format(ns=self.namespace, name=name))
 
+    def acquire_monitoring_task(self, name, timeout):
+        return self._connection.set(Rediskey.MONITORING.format(ns=self.namespace), name, ex=timeout, nx=True)
+
     def get_runner_status(self, name):
-        return self._connection.hget(
-            Rediskey.RUNNER.format(ns=self.namespace, name=name), "status",
-        ).decode()
+        return self._connection.hget(Rediskey.RUNNER.format(ns=self.namespace, name=name), "status",).decode()
 
     def update_runner(self, name, pipeline=None, **kwargs):
         connection = pipeline if pipeline is not None else self._connection
-        return connection.hmset(
-            Rediskey.RUNNER.format(ns=self.namespace, name=name), kwargs,
-        )
+        return connection.hmset(Rediskey.RUNNER.format(ns=self.namespace, name=name), kwargs,)
 
     def save_runner(self, name, runner_dict, pipeline=None):
         connection = pipeline if pipeline is not None else self._connection
@@ -177,7 +176,7 @@ class RedisController:
         connection = pipeline if pipeline is not None else self._connection
         key = Rediskey.TASK.format(ns=self.namespace, uid=task.uid)
         connection.set(key, pickle.dumps(task))
-        
+
         if notify:
             connection.rpush(self.events_queue, task.uid)
 
@@ -196,13 +195,14 @@ class RedisController:
                 if blob:
                     yield pickle.loads(blob)
 
-
     def delete_task(self, uid, pipeline=None):
         connection = pipeline if pipeline is not None else self._connection
         connection.hdel(Rediskey.TASK.format(ns=self.namespace, uid=uid))
 
 
-logging_format = "<light-blue>{time: YYYY-MM-DD at HH:mm:ss}</> | {extra[app]} | <level>{level}</> | <level>{message}</>"
+logging_format = (
+    "<light-blue>{time: YYYY-MM-DD at HH:mm:ss}</> | {extra[app]} | <level>{level}</> | <level>{message}</>"
+)
 logger.configure(
     handlers=[dict(sink=sys.stderr, format=logging_format, colorize=True),]
 )

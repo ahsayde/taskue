@@ -10,8 +10,6 @@ from signal import SIGINT, SIGKILL, SIGTERM
 
 import gevent
 import redis
-import gc
-import objgraph
 from taskue.task import _Task, TaskStatus
 from taskue.utils import RedisController, logger
 
@@ -44,29 +42,62 @@ class TaskueRunner:
         self.timeout = timeout
         self.run_untaged_tasks = run_untaged_tasks
         self.logger = logger.bind(app="RUNNER %s" % self.name)
-        self._die = False
+        self._stop = False
         self._queues = []
         self._rctrl = RedisController(redis_conn, namespace)
 
     def _register(self):
+        """Register runner
+        """
         self._rctrl.register_runner(
             name=self.name,
             namespace=self.namespace,
             status=RunnerStatus.IDEL,
             queues=self.queues,
             timeout=self.timeout,
-            run_untaged_tasks=self.run_untaged_tasks
+            run_untaged_tasks=self.run_untaged_tasks,
         )
 
     def _monitor_runners(self):
-        pass
+        """Monitor other runners
+        """
+        if not self._rctrl.acquire_monitoring_task(self.name, timeout=30):
+            return
+        
+        self.logger.info("Start monitor runners")
+        for runner in self._rctrl.get_runners():
+            if (
+                self._rctrl.is_healthy_runner(runner["name"])
+                or runner["name"] == self.name
+                or runner["status"] in [RunnerStatus.DEAD, RunnerStatus.STOPPED,]
+            ):
+                continue
 
-    def _send_heartbeat(self):
-        pass
+            with self._rctrl.pipeline() as pipeline:
+                self.logger.warning("Runner {} is dead", runner["name"])
+                self._rctrl.update_runner(runner["name"], pipeline=pipeline, status=RunnerStatus.DEAD)
+                if runner["status"] == RunnerStatus.BUSY:
+                    task = self._rctrl.get_task(runner["task"])
+                    if task.enable_rescheduling:
+                        logger.info("Re-scheduling task {}", runner["task"])
+                        task.reschedule(pipeline=pipeline)
+                    else:
+                        logger.info("Terminate task {}", runner["task"])
+                        task.terminate(pipeline=pipeline)
+
+                    if task.workflow:
+                        workflow = self._rctrl.get_workflow(task.workflow)
+                        workflow.update_task(task)
+                        workflow.update(pipeline=pipeline)
+
+                pipeline.execute()
+
+    def _send_heartbeat(self, timeout=None):
+        timeout = (timeout or HEARTBEAT_TIMEOUT) + HEARTBEAT_MAX_DELAY
+        self._rctrl.send_runner_heartbeat(self.name, timeout)
 
     def _update(self, pipeline=None, **kwargs):
         self._rctrl.update_runner(self.name, pipeline, **kwargs)
-
 
     def _execute_task(self, task):
         func, args, kwargs = task.workload
@@ -74,6 +105,8 @@ class TaskueRunner:
         for attempt in range(max(task.retries, 1)):
             task.attempts += 1
             self.logger.info("Executing attempt %s of {}", task.attempts, task.retries)
+
+            self._send_heartbeat(timeout=timeout)
             try:
                 if timeout:
                     task.result = gevent.with_timeout(timeout, func, *args, **kwargs)
@@ -90,11 +123,17 @@ class TaskueRunner:
                 break
 
     def _start(self):
-        while not self._die:
-
-            if self._die:
+        while True:
+            if self._stop:
                 self._update(status=RunnerStatus.STOPPED)
                 break
+
+            if self._rctrl.get_runner_status(self.name) == RunnerStatus.DEAD:
+                self.logger.critical("Marked as dead, shutting down")
+                sys.exit(1)
+
+            self._send_heartbeat()
+            self._monitor_runners()
 
             queue, uid = self._rctrl.blpop(self._queues, timeout=3)
             if not (queue and uid):
@@ -132,6 +171,10 @@ class TaskueRunner:
                 finally:
                     task.executed_at = time.time()
 
+                if self._rctrl.get_runner_status(self.name) == RunnerStatus.DEAD:
+                    self.logger.critical("Marked as dead, shutting down")
+                    sys.exit(1)
+
                 with self._rctrl.pipeline() as pipeline:
                     task.save(pipeline=pipeline)
                     if task.workflow:
@@ -143,104 +186,35 @@ class TaskueRunner:
                     self._update(pipeline, status=RunnerStatus.IDEL, task=0)
                     pipeline.execute()
 
-    def _stop(self):
-        if not self._die:
-            self._die = True
-            self._update(status=RunnerStatus.STOPPING)
 
     def start(self):
         """ Start the runner """
         for signal_type in (SIGTERM, SIGKILL, SIGINT):
-            gevent.signal(signal_type, self._stop)
+            gevent.signal(signal_type, self.stop)
 
         if self.run_untaged_tasks:
             self.queues.insert(0, "default")
 
         for queue in self.queues:
             self._queues.append(self._rctrl.queued_tasks_queue % queue)
-        
+
         self._queues.append(self._rctrl.new_workfows_queue)
 
-        self.logger.info("Taskue runner (name: {}) is running", self.name)
+        self._send_heartbeat()
         self._register()
+
+        self.logger.info("Taskue runner (name: {}) is running", self.name)
         self._start()
 
     def stop(self):
         """ Stop the runner gracefully """
-        self.logger.info("Shutting down gracefully, please wait ...")
-        self._stop()
-
+        if not self._stop:
+            self.logger.info("Shutting down gracefully, please wait ...")
+            self._update(status=RunnerStatus.STOPPING)
+            self._stop = True
 
 if __name__ == "__main__":
     from redis import Redis
 
     runner = TaskueRunner(Redis())
     runner.start()
-
-
-# class TaskueRunner:
-#     def __init__(
-#         self,
-#         redis_conn: redis.Redis,
-#         name: str = None,
-#         namespace: str = "default",
-#         queues: tuple = None,
-#         timeout: int = 3600,
-#         run_untaged_tasks: bool = True,
-#     ):
-#         self.name = name or uuid4().hex[:10]
-#         self.namespace = namespace
-#         self.queues = queues or ()
-#         self.timeout = timeout
-#         self.run_untaged_tasks = run_untaged_tasks
-#         self.logger = logger.bind(app="RUNNER %s" % self.name)
-#         self._stop_flag = False
-#         self._queues = []
-#         self._rctrl = RedisController(redis_conn, namespace)
-
-#     def __dir__(self):
-#         return ('start', 'stop')
-
-#     @property
-#     def rstatus(self):
-#         return self._rctrl.get_runner_status(self.name)
-
-# )
-
-#     def _wait_for_connection(self):
-#         while not self._stop_flag:
-#             try:
-#                 if self._rctrl.ping():
-#                     self.logger.success("Redis connection is established, back to work")
-#                     break
-#             except redis.exceptions.ConnectionError:
-#                 gevent.sleep(5)
-
-#     def _stop(self):
-#         if not self._stop_flag:
-#             self.logger.info("Shutting down, please wait ...")
-#             self._stop_flag = True
-#             self._rctrl.update_runner(self.name, status=RunnerStatus.STOPPING)
-
-#     def start(self):
-#         """ Start the runner """
-#         for signal_type in (SIGTERM, SIGKILL, SIGINT):
-#             gevent.signal(signal_type, self._stop)
-
-#         self._queues = [self._rctrl.queued_tasks_queue % queues for queues in self.queues]
-#         if self.run_untaged_tasks:
-#             self._queues.append(self._rctrl.queued_tasks_queue % "default")
-
-#         self._register()
-#         self._start()
-
-#     def stop(self):
-#         """ Stop the runner gracefully """
-#         self._stop()
-
-
-# if __name__ == "__main__":
-#     from redis import Redis
-
-#     runner = TaskueRunner(Redis())
-#     runner.start()

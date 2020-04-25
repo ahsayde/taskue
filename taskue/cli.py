@@ -6,7 +6,6 @@ import toml
 from datetime import datetime
 import redis
 from taskue import Taskue, WorkflowNotFound, TaskNotFound
-from taskue.server import TaskueServer
 from taskue.runner import TaskueRunner
 
 
@@ -125,13 +124,6 @@ def namespace(ctx):
 
 @cli.group()
 @click.pass_context
-def server(ctx):
-    """Manage server"""
-    pass
-
-
-@cli.group()
-@click.pass_context
 def runner(ctx):
     """start and list runners"""
     pass
@@ -231,15 +223,6 @@ def namespace_switch(ctx, name):
 def namespace_delete(ctx, name):
     ctx.obj["taskue"].namespace_delete(name)
     success("namespace is deleted")
-
-
-## Server
-
-@server.command(name="start", help="Start taskue server")
-@click.pass_context
-def server_start(ctx):
-    server = TaskueServer(ctx.obj["redis"], ctx.obj["namespace"])
-    server.start()
 
 
 ## Runner 
