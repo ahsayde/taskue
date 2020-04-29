@@ -2,6 +2,8 @@ import pickle
 import time
 import uuid
 from enum import Enum
+import os
+import inspect
 
 from taskue.utils import Queue, Rediskey
 
@@ -57,6 +59,7 @@ class Base:
         self._workflow = kwargs.get("workflow", None)
         self._stage = kwargs.get("_stage", 1)
         self._workload = kwargs.get("_workload", None)
+        self._workload_info = kwargs.get("_workload_info", dict())
         self._attempts = kwargs.get("_attempts", 0)
         self._rescheduleded = kwargs.get("_rescheduleded", 0)
         self._result = kwargs.get("_result", None)
@@ -226,6 +229,11 @@ class Task(Base):
     def execute(self, func, *args, **kwargs):
         """ Sets task's workload """
         self._workload = pickle.dumps((func, args, kwargs))
+        self._workload_info = {
+            "method": func.__name__,
+            "module_name": func.__module__,
+            "module_path": inspect.getmodule(func).__file__
+        }
 
 
 class TaskResult(Base):
@@ -261,6 +269,10 @@ class _Task(Base):
     @property
     def tid(self):
         return self._tid
+
+    @property
+    def workload_info(self):
+        return self._workload_info
 
     @tid.setter
     def tid(self, value):

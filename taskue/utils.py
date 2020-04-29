@@ -61,8 +61,6 @@ class RedisController:
 
         return queue, data
 
-        # def namespace_list(self):
-
     def list_namespaces(self):
         namespaces = self._connection.hscan_iter(Rediskey.NAMESPACES)
         for item in namespaces:
@@ -198,6 +196,12 @@ class RedisController:
     def delete_task(self, uid, pipeline=None):
         connection = pipeline if pipeline is not None else self._connection
         connection.hdel(Rediskey.TASK.format(ns=self.namespace, uid=uid))
+
+    def workflows_count(self):
+        return self._connection.zcard(Rediskey.WORKFLOWS.format(ns=self.namespace))
+    
+    def tasks_count(self):
+        return self._connection.zcard(Rediskey.TASKS.format(ns=self.namespace))
 
 
 logging_format = (
