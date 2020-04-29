@@ -247,7 +247,7 @@ def runner_start(ctx, name, queues, timeout, run_untaged_tasks):
     runner.start()
 
 
-@runner.command(name="list", help="List runners")
+@runner.command(name="list", help="List all runners")
 @click.pass_context
 def runner_list(ctx):
     results = []
