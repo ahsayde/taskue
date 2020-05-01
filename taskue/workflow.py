@@ -11,14 +11,14 @@ from taskue.task import (TASK_DONE_STATES, Conditions, TaskStatus, TaskSummary,
 __all__ = ("WorkflowStatus", "StageStatus", "WorkflowResult")
 
 
-class WorkflowStatus(Enum):
+class WorkflowStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     PASSED = "passed"
     FAILED = "failed"
 
 
-class StageStatus(Enum):
+class StageStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     PASSED = "passed"
@@ -79,7 +79,7 @@ class WorkflowResult(Base):
     """ Workflow result class """
 
     def __init__(self, workflow):
-        super().__init__(workflow.__dict__)
+        super().__init__(** workflow.__dict__)
 
     @property
     def is_passed(self):
@@ -189,9 +189,9 @@ class _Workflow(Base):
                 or (prev_status == StageStatus.PASSED and Conditions.ON_SUCCESS)
                 or (prev_status != StageStatus.PASSED and task.when == Conditions.ON_FAILURE)
             ):
-                task.queue(pipeline)
+                task.queue(rctrl, pipeline)
             else:
-                task.skip(pipeline)
+                task.skip(rctrl, pipeline)
 
             self.update_task(task)
 

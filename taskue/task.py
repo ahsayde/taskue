@@ -3,12 +3,13 @@ import os
 import pickle
 import time
 import uuid
+import json
 from enum import Enum
 
 __all__ = ("Task", "TaskStatus", "TaskSummary", "TaskResult", "Conditions")
 
 
-class Conditions(Enum):
+class Conditions(str, Enum):
     """ Task execution conditions """
 
     ALWAYS = "always"
@@ -16,7 +17,7 @@ class Conditions(Enum):
     ON_FAILURE = "on_failure"
 
 
-class TaskStatus(Enum):
+class TaskStatus(str, Enum):
     """ Task states """
 
     CREATED = "created"
@@ -53,7 +54,6 @@ class Base:
         self._timeout = kwargs.get("_timeout", 3600)
         self._allow_failure = kwargs.get("_allow_failure", False)
         self._reschedule = kwargs.get("_reschedule", True)
-        self._workflow = kwargs.get("workflow", None)
         self._stage = kwargs.get("_stage", 1)
         self._workload = kwargs.get("_workload", None)
         self._workload_info = kwargs.get("_workload_info", dict())
@@ -246,6 +246,12 @@ class TaskResult(Base):
             TaskStatus.ERRORED,
             TaskStatus.TERMINATED,
         ]
+    
+    @property
+    def json(self):
+        ddict = self.__dict__.copy()
+        ddict.pop("_workload")
+        return ddict
 
 
 class _Task(Base):

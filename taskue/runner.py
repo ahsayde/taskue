@@ -174,7 +174,7 @@ class TaskueRunner:
 
             if queue == self._rctrl.keys.new_workflows:
                 # start new workflow
-                self.logger.info("Start workflow (UID: {})", workflow.title)
+                self.logger.info("Start workflow (UID: {})", uid)
                 workflow = self._rctrl.workflow_get(uid)
                 workflow.start(self._rctrl)
             else:

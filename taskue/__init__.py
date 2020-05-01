@@ -132,7 +132,7 @@ class Taskue:
         workflow = self._ctrl.workflow_get(workflow_uid)
         if not workflow:
             raise NotFound("workflow %s not found" % workflow_uid)
-        return WorkflowResult(**workflow.__dict__)
+        return WorkflowResult(workflow)
 
     def workflow_wait(self, workflow_uid: str, timeout: int = 60) -> WorkflowResult:
         """Wait until workflow finish
