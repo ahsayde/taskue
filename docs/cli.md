@@ -1,6 +1,8 @@
 # Command Line Interface
 
-Taskue cli is a command line tool for managing taskue, it stores its configuration in `~/.taskue.toml` file and it looks like this
+Taskue cli is a command line tool for managing taskue resources.
+It stores its configuration in `~/.taskue.toml` file and it looks like this
+
 ```toml
 redis_host = "localhost"    # redis hostname
 redis_port = 6379           # redis port
@@ -57,12 +59,12 @@ taskue namespace [COMMAND] [OPTIONS]
 <mark>switch</mark> *Switch to namespace*
 
 - **Arguments**
-    - `name` *namespace name*
+    - `name` *Namespace name*
 
 <mark>delete</mark> *Delete namespace*
 
 - **Arguments**
-    - `name` *namespace name*
+    - `name` *Namespace name*
 
 
 ### Runner
@@ -81,8 +83,12 @@ taskue runner [COMMAND] [OPTIONS]
 - **Options**
     - `--name`, `-n` *Runner name (should be unique)*
     - `--timeout`, `-t` *Runner default timeout*
-    - `--queues`, `-q` *redis password*
+    - `--queues`, `-q` *Redis password*
 
+- **Usage**
+    ```bash
+    taskue runner start --name runner-1 --timeout 60 --queue foo --queue bar
+    ```
 
 ### Workflow
 
@@ -98,25 +104,25 @@ taskue workflow [COMMAND] [OPTIONS]
 - **Options**
     - `--page`, `-p` *Page number*
     - `--limit`, `-l` *Results per page*
-- **Arguments**
-    - `uid` *workflow unique id*
 
 <mark>get</mark> *Get workflow details*
 
 - **Arguments**
-    - `uid` *workflow unique id*
+    - `uid` *Workflow unique id*
 - **Options**
     - `--json`, `-j` *Return results in json format*
 
 <mark>wait</mark> *Wait until workflow finish*
 
+- **Arguments**
+    - `uid` *Workflow unique id*
 - **Options**
     - `--timeout`, `-t` *Maximum timeout in seconds*
 
 <mark>delete</mark> *Delete workflow*
 
 - **Arguments**
-    - `uid` *workflow unique id*
+    - `uid` *Workflow unique id*
 
 
 
@@ -134,8 +140,6 @@ taskue task [COMMAND] [OPTIONS]
 - **Options**
     - `--page`, `-p` *Page number*
     - `--limit`, `-l` *Results per page*
-- **Arguments**
-    - `uid` *task unique id*
 
 <mark>get</mark> *Get task details*
 
@@ -146,10 +150,12 @@ taskue task [COMMAND] [OPTIONS]
 
 <mark>wait</mark> *Wait until task finish*
 
+- **Arguments**
+    - `uid` *Task unique id*
 - **Options**
     - `--timeout`, `-t` *Maximum timeout in seconds*
 
 <mark>delete</mark> *Delete task*
 
 - **Arguments**
-    - `uid` *task unique id*
+    - `uid` *Task unique id*

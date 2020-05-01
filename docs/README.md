@@ -61,9 +61,25 @@ result = taskue.workflow_wait(workflow_id)
 ```
 
 
-<!-- ### Features
-- Multi stages.
-- Retry on fail for a defined number of retires.
+## Features
+
+### Workflows
+
+### Namespaces
+
+### Execution Conditions
+
+### Runner Monitoing
+
+### Task Re-Schedling 
+
+### Auto Modules Loader
+
+
+<!-- - Run a single task.
+- Run multiple tasks (in parallel/series) as a workflow.
+- Retry on fail for a configured number of retires.
 - Capture task logs.
-- Task can be taged with label so it will run only on runners that has the same tag.
-- Skip task if any task of the previous stages failed. -->
+- Task can be taged with label so it will run only on runners that has the same tag. 
+- Skip task if any task of the previous stages failed.
+ -->

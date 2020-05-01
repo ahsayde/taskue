@@ -1,11 +1,12 @@
 import pickle
 import time
 import uuid
+from typing import Sequence
 from enum import Enum
+from redis.client import Pipeline
 
-from taskue.utils import RedisController
-from taskue.task import _Task, TaskStatus, TaskSummary, Conditions, TASK_DONE_STATES
-
+from taskue.task import (TASK_DONE_STATES, Conditions, TaskStatus, TaskSummary,
+                         _Task)
 
 __all__ = ("WorkflowStatus", "StageStatus", "WorkflowResult")
 
@@ -40,7 +41,6 @@ class Base:
         self._done_at = kwargs.get("_done_at", None)
         self._stages = kwargs.get("_stages", [])
         self._current_stage = kwargs.get("_current_stage", 0)
-        self.rctrl = None
 
     @property
     def uid(self):
@@ -78,8 +78,8 @@ class Base:
 class WorkflowResult(Base):
     """ Workflow result class """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, workflow):
+        super().__init__(workflow.__dict__)
 
     @property
     def is_passed(self):
@@ -93,7 +93,6 @@ class WorkflowResult(Base):
 class _Workflow(Base):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.rctrl = None
         self.status = kwargs.get("_status", WorkflowStatus.PENDING)
         self.created_at = kwargs.get("_created_at", time.time())
 
@@ -104,6 +103,10 @@ class _Workflow(Base):
     @property
     def stages(self):
         return self._stages
+    
+    @stages.setter
+    def stages(self, stages: Sequence[Sequence[TaskSummary]]):
+        self._stages = stages
 
     @property
     def current_stage_tasks(self):
@@ -114,37 +117,33 @@ class _Workflow(Base):
         return self._current_stage
 
     @current_stage.setter
-    def current_stage(self, value):
-        self._current_stage = value
+    def current_stage(self, current_stage: int):
+        self._current_stage = current_stage
 
     @Base.title.setter  # pylint: disable=no-member
-    def title(self, value):
-        self._title = value
+    def title(self, title: str):
+        self._title = title
 
     @Base.status.setter  # pylint: disable=no-member
-    def status(self, value):
-        self._status = value
-
-    @stages.setter  # pylint: disable=no-member
-    def stages(self, value):
-        self._stages = value
+    def status(self, status: WorkflowStatus):
+        self._status = status
 
     @Base.created_at.setter  # pylint: disable=no-member
-    def created_at(self, value):
-        self._created_at = value
+    def created_at(self, created_at: float):
+        self._created_at = created_at
 
     @Base.started_at.setter  # pylint: disable=no-member
-    def started_at(self, value):
-        self._started_at = value
+    def started_at(self, started_at: float):
+        self._started_at = started_at
 
     @Base.done_at.setter  # pylint: disable=no-member
-    def done_at(self, value):
-        self._done_at = value
+    def done_at(self, done_at: float):
+        self._done_at = done_at
 
     def update_task(self, task: _Task):
         self.stages[task.stage][task.tid] = TaskSummary(task)
 
-    def get_task_status(self, task):
+    def get_task_status(self, task: _Task):
         return self.stages[task.stage][task.tid].status
 
     def get_stage_status(self, stage: int):
@@ -175,15 +174,15 @@ class _Workflow(Base):
         else:
             self.status = WorkflowStatus.PASSED
 
-    def start(self):
-        pipeline = self.rctrl.pipeline()
+    def start(self, rctrl):
+        pipeline = rctrl.pipeline()
         self.status = WorkflowStatus.RUNNING
         self.started_at = time.time()
-        self.start_next_stage(pipeline=pipeline)
+        self.start_next_stage(rctrl, pipeline=pipeline)
 
-    def start_next_stage(self, pipeline, prev_status=None):
+    def start_next_stage(self, rctrl, pipeline: Pipeline, prev_status: StageStatus = None):
         for task in self.current_stage_tasks:
-            task = self.rctrl.get_task(task.uid)
+            task = rctrl.task_get(task.uid)
             if (
                 self.current_stage == 0
                 or task.when == Conditions.ALWAYS
@@ -195,11 +194,12 @@ class _Workflow(Base):
                 task.skip(pipeline)
 
             self.update_task(task)
-        self.update(pipeline=pipeline)
 
-    def update(self, pipeline=None):
+        self.update(rctrl, pipeline=pipeline)
+
+    def update(self, rctrl, pipeline: Pipeline = None):
         if pipeline is None:
-            pipeline = self.rctrl.pipeline()
+            pipeline = rctrl.pipeline()
 
         status = self.get_stage_status(self.current_stage)
         if status in STAGE_DONE_STATES:
@@ -208,15 +208,10 @@ class _Workflow(Base):
                 self.update_status()
             else:
                 self.current_stage += 1
-                self.start_next_stage(pipeline, prev_status=status)
+                self.start_next_stage(rctrl, pipeline, prev_status=status)
 
-        self.save(pipeline=pipeline)
+        self.save(rctrl, pipeline=pipeline)
         pipeline.execute()
 
-    def save(self, queue=False, pipeline=None):
-        self.rctrl.save_workflow(self, queue=queue, pipeline=pipeline)
-
-    def __getstate__(self):
-        data = self.__dict__.copy()
-        del data["rctrl"]
-        return data
+    def save(self, rctrl, queue: bool = False, pipeline: Pipeline = None):
+        rctrl.workflow_save(self, queue=queue, pipeline=pipeline)

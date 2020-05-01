@@ -1,129 +1,253 @@
 import pickle
 import sys
 import time
-from redis import Redis
-from uuid import uuid4
-from functools import wraps
+from typing import Iterator, Sequence, Union
 
-from taskue.utils import RedisController
-from taskue.task import Task, _Task, TaskStatus, TaskResult, TaskSummary, TASK_DONE_STATES, Conditions
-from taskue.workflow import (
-    _Workflow,
-    WorkflowResult,
-    WorkflowStatus,
-    WORKFLOW_DONE_STATES,
+from loguru import logger
+from redis import Redis
+from taskue.task import TASK_DONE_STATES, Conditions, Task, TaskResult, TaskStatus, TaskSummary, _Task
+from taskue.controller import RedisController
+from taskue.workflow import WORKFLOW_DONE_STATES, WorkflowResult, WorkflowStatus, _Workflow
+
+
+logging_format = (
+    "<light-blue>{time: YYYY-MM-DD at HH:mm:ss}</> | {extra[app]} | <level>{level}</> | <level>{message}</>"
+)
+logger.configure(
+    handlers=[dict(sink=sys.stderr, format=logging_format, colorize=True)]
 )
 
 
 class Taskue:
     def __init__(self, redis_conn: Redis, namespace: str = "default"):
+        """Taskue client
+
+        Args:
+            redis_conn (Redis): redis connection
+            namespace (str, optional): namespace. Defaults to "default".
+        """
         self._namespace = namespace
-        self._rctrl = RedisController(redis_conn, namespace=namespace)
+        self._ctrl = RedisController(redis_conn, namespace=namespace)
 
     @property
     def namespace(self):
+        """Current namespace
+        """
         return self._namespace
 
-    def run(self, task: Task):
-        _task = _Task(task)
-        _task.rctrl = self._rctrl
-        _task.queue()
-        return _task.uid
+    def enqueue(self, work: Union[Task, Sequence[Sequence[Task]]], title: str = "") -> str:
+        """Enqueue task or multiple tasks as a workflow
 
-    def run_workflow(self, stages: list, title: str = None) -> str:
-        pipeline = self._rctrl.pipeline()
-        _workflow = _Workflow()
-        _workflow.title = title
+        Args:
+            work (Union[Task, Sequence[Sequence[Task]]]): task or list of lists of tasks.
+            title (str, optional): task / workflow title. Defaults to "".
+
+        Returns:
+            str: task / workflow unique id
+        """
+        title = title or "Untitled"
+        if isinstance(work, Task):
+            return self._enqueue_task(work)
+
+        elif isinstance(work, list):
+            return self._enqueue_workflow(work)
+
+    def _enqueue_task(self, task: Task, title: str = None) -> str:
+        task = _Task(task)
+        task.queue(self._ctrl)
+        return task.uid
+
+    def _enqueue_workflow(self, stages: Sequence[Sequence[Task]], title: str = None):
+        pipeline = self._ctrl.pipeline()
+        workflow = _Workflow()
+        workflow.title = title
 
         for stage, tasks in enumerate(stages):
-            _workflow.stages.append([])
+            workflow.stages.append([])
             for index, task in enumerate(tasks):
-                _task = _Task(task)
-                _task.tid = index
-                _task.stage = stage
-                _task.workflow = _workflow.uid
-                _workflow.stages[stage].append(TaskSummary(_task))
-                self._rctrl.save_task(_task, pipeline=pipeline)
+                task = _Task(task)
+                task.tid = index
+                task.stage = stage
+                task.workflow = workflow.uid
+                workflow.stages[stage].append(TaskSummary(task))
+                task.save(self._ctrl, pipeline=pipeline)
 
-        self._rctrl.save_workflow(_workflow, queue=True, pipeline=pipeline)
+        workflow.save(self._ctrl, queue=True, pipeline=pipeline)
         pipeline.execute()
-        return _workflow.uid
+        return workflow.uid
 
-    def namespace_list(self):
-        return self._rctrl.list_namespaces()
+    def namespace_list(self) -> Sequence[dict]:
+        """List namespaces
 
-    def namespace_delete(self, namespace):
-        self._rctrl.namespace_delete(namespace)
+        Returns:
+            Sequence[dict]: list of namespaces
+        """
+        namespaces = self._ctrl.namespaces_list()
+        return list(namespaces)
 
-    def runner_list(self):
-        return self._rctrl.get_runners()
+    def namespace_delete(self, namespace: str):
+        """Delete namespace
 
-    def runner_get(self, name):
-        runner = self._rctrl.get_runner(name)
-        if not runner:
-            raise RunnerNotFound()
-        return runner
+        Args:
+            namespace (str): namespace name
+        """
+        self._ctrl.namespace_delete(namespace)
 
-    def workflow_list(self, page=1, limit=25):
+    def runner_list(self) -> Sequence[dict]:
+        """List runners
+
+        Returns:
+            Sequence[dict]: list of runners
+        """
+        runners = self._ctrl.runners_list()
+        return list(runners)
+
+    def workflow_list(self, page: int = 1, limit: int = 25) -> Iterator[WorkflowResult]:
+        """List workflows
+
+        Args:
+            page (int, optional): page number. Defaults to 1.
+            limit (int, optional): number of results per page. Defaults to 25.
+
+        Yields:
+            WorkflowResult: workflow result
+        """
         start = (page - 1) * limit
         end = (page * limit) - 1
-        return self._rctrl.list_workflows(start, end)
+        for workflow in self._ctrl.workflows_list(start, end):
+            yield WorkflowResult(workflow)
 
-    def workflow_get(self, uid):
-        workflow = self._rctrl.get_workflow(uid)
+    def workflow_get(self, workflow_uid: str) -> WorkflowResult:
+        """Get workflow result
+
+        Args:
+            workflow_uid (str): workflow unique id.
+
+        Raises:
+            NotFound: raises if workflow is not found.
+
+        Returns:
+            WorkflowResult: workflow result.
+        """
+        workflow = self._ctrl.workflow_get(workflow_uid)
         if not workflow:
-            raise WorkflowNotFound()
+            raise NotFound("workflow %s not found" % workflow_uid)
         return WorkflowResult(**workflow.__dict__)
 
-    def workflow_wait(self, uid, timeout: int = 60):
+    def workflow_wait(self, workflow_uid: str, timeout: int = 60) -> WorkflowResult:
+        """Wait until workflow finish
+
+        Args:
+            workflow_uid (str): workflow unique id.
+            timeout (int, optional): timeout in seconds. Defaults to 60.
+
+        Raises:
+            Timeout: raises if timeout is exceeded
+
+        Returns:
+            WorkflowResult: workflow result
+        """
         for _ in range(timeout):
-            workflow = self.workflow_get(uid)
+            workflow = self.workflow_get(workflow_uid)
             if workflow.status in WORKFLOW_DONE_STATES:
                 return workflow
             else:
                 time.sleep(1)
         else:
-            raise TimeoutError("timeout")
+            raise Timeout("timeout exceeded")
 
-    def workflow_delete(self, uid):
-        workflow = self.workflow_get(uid)
+    def workflow_delete(self, workflow_uid: str):
+        """Delete workflow
+
+        Args:
+            workflow_uid (str): workflow unique id.
+
+        Raises:
+            InvalidAction: raises if workflow is not finished yet.
+        """
+        workflow = self.workflow_get(workflow_uid)
         if not workflow.is_done:
-            raise RuntimeError("Cannot delete unfinished workflow")
+            raise InvalidAction("Cannot delete unfinished workflow")
 
-        self._rctrl.delete_workflow(uid)
+        self._ctrl.workflow_delete(workflow_uid)
 
-    def task_get(self, uid):
-        task = self._rctrl.get_task(uid)
+    def task_list(self, page: int = 1, limit: int = 25) -> Iterator[TaskResult]:
+        """List tasks
+
+        Args:
+            page (int, optional): page number. Defaults to 1.
+            limit (int, optional): number of results per page. Defaults to 25.
+
+        Yields:
+            TaskResult: task result
+        """
+        start = (page - 1) * limit
+        end = (page * limit) - 1
+        for task in self._ctrl.tasks_list(start, end):
+            yield TaskResult(task)
+
+    def task_get(self, task_uid: str) -> TaskResult:
+        """Get task result
+
+        Args:
+            task_uid (str): task unique id.
+
+        Raises:
+            NotFound: if task is not found.
+
+        Returns:
+            TaskResult: task result
+        """
+        task = self._ctrl.task_get(task_uid)
         if not task:
-            raise TaskNotFound()
+            raise NotFound("task %s not found" % task_uid)
         return TaskResult(task)
 
-    def task_wait(self, uid: str, timeout: int = 60):
+    def task_wait(self, task_uid: str, timeout: int = 60) -> TaskResult:
+        """Wait until the task finish
+
+        Args:
+            task_uid (str): task unique id.
+            timeout (int, optional): timeout in seconds. Defaults to 60.
+
+        Raises:
+            Timeout: if timeout is exceeded.
+
+        Returns:
+            TaskResult: task result.
+        """
         for _ in range(timeout):
-            task = self.task_get(uid)
+            task = self.task_get(task_uid)
             if task.status in TASK_DONE_STATES:
                 return task
             else:
                 time.sleep(1)
         else:
-            raise TimeoutError("timeout")
+            raise Timeout("timeout exceeded")
 
-    def task_list(self, page=1, limit=25):
-        start = (page - 1) * limit
-        end = (page * limit) - 1
-        return self._rctrl.list_tasks(start, end)
+    def task_delete(self, task_uid: str):
+        """Delete task by its unique id
+
+        Args:
+            task_uid (str): task unique id.
+
+        Raises:
+            InvalidAction: raises if task is a part of a workflow.
+        """
+        task = self.task_get(task_uid)
+        if task.workflow:
+            raise InvalidAction("Cannot delete task which is a part of workflow")
+
+        self._ctrl.task_delete(task_uid)
 
 
-class RunnerNotFound(Exception):
-    def __str__(self):
-        return "runner not found"
+class NotFound(Exception):
+    pass
 
 
-class WorkflowNotFound(Exception):
-    def __str__(self):
-        return "workflow not found"
+class InvalidAction(Exception):
+    pass
 
 
-class TaskNotFound(Exception):
-    def __str__(self):
-        return "task not found"
+class Timeout(Exception):
+    pass

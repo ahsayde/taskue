@@ -9,8 +9,10 @@ from uuid import uuid4
 
 import gevent
 import redis
+from taskue import logger
 from taskue.task import TaskStatus, _Task
-from taskue.utils import RedisController, logger
+from taskue.controller import RedisController
+
 
 HEARTBEAT_TIMEOUT = 10
 HEARTBEAT_MAX_DELAY = 5
@@ -24,7 +26,7 @@ class RunnerStatus:
     DEAD = "dead"
 
 
-class ModuleLoader:
+class Loader:
     def __init__(self, task):
         self.task = task
 
@@ -50,13 +52,12 @@ class TaskueRunner:
         queues: list = None,
         timeout: int = 3600,
         run_untaged_tasks: bool = True,
-        auto_load_modules: bool = True,
+        auto_load_modules: bool = False,
     ):
         self.name = name or uuid4().hex[:10]
         self.namespace = namespace
         self.queues = queues or []
         self.timeout = timeout
-        self.run_untaged_tasks = run_untaged_tasks
         self.auto_load_modules = auto_load_modules
         self.logger = logger.bind(app="RUNNER %s" % self.name)
         self._stop = False
@@ -66,13 +67,12 @@ class TaskueRunner:
     def _register(self):
         """Register runner
         """
-        self._rctrl.register_runner(
+        self._rctrl.runner_register(
             name=self.name,
             namespace=self.namespace,
             status=RunnerStatus.IDEL,
             queues=self.queues,
-            timeout=self.timeout,
-            run_untaged_tasks=self.run_untaged_tasks,
+            timeout=self.timeout
         )
 
     def _monitor_runners(self):
@@ -82,10 +82,10 @@ class TaskueRunner:
         if not self._rctrl.acquire_monitoring_task(self.name, timeout=30):
             return
 
-        for runner in self._rctrl.get_runners():
+        for runner in self._rctrl.runners_list():
             # skip current runner, healthy and none active runners
             if (
-                self._rctrl.is_healthy_runner(runner["name"])
+                self._rctrl.is_runner_healthy(runner["name"])
                 or runner["name"] == self.name
                 or runner["status"] in [RunnerStatus.DEAD, RunnerStatus.STOPPED]
             ):
@@ -94,23 +94,23 @@ class TaskueRunner:
             with self._rctrl.pipeline() as pipeline:
                 # change runner status to dead
                 self.logger.warning("Runner {} is dead", runner["name"])
-                self._rctrl.update_runner(runner["name"], pipeline=pipeline, status=RunnerStatus.DEAD)
+                self._rctrl.runner_update(runner["name"], pipeline=pipeline, status=RunnerStatus.DEAD)
 
                 # if the runner is busy then reschedule its task if rescheduling is enabled
                 if runner["status"] == RunnerStatus.BUSY:
-                    task = self._rctrl.get_task(runner["task"])
-                    if task.enable_rescheduling:
+                    task = self._rctrl.task_get(runner["task"])
+                    if task.allow_rescheduling:
                         logger.info("Re-scheduling task {}", runner["task"])
-                        task.reschedule(pipeline=pipeline)
+                        task.reschedule(self._rctrl, pipeline=pipeline)
                     else:
                         logger.info("Terminate task {}", runner["task"])
-                        task.terminate(pipeline=pipeline)
+                        task.terminate(self._rctrl, pipeline=pipeline)
 
                     # if the task is part of a workflow, update the workflow
                     if task.workflow:
-                        workflow = self._rctrl.get_workflow(task.workflow)
+                        workflow = self._rctrl.workflow_get(task.workflow)
                         workflow.update_task(task)
-                        workflow.update(pipeline=pipeline)
+                        workflow.update(self._rctrl, pipeline=pipeline)
 
                 pipeline.execute()
 
@@ -118,12 +118,12 @@ class TaskueRunner:
         """Send heartbeat with timeout
         """
         timeout = (timeout or HEARTBEAT_TIMEOUT) + HEARTBEAT_MAX_DELAY
-        self._rctrl.send_runner_heartbeat(self.name, timeout)
+        self._rctrl.heartbeat_send(self.name, timeout)
 
     def _update(self, pipeline=None, **kwargs):
         """update runner info
         """
-        self._rctrl.update_runner(self.name, pipeline, **kwargs)
+        self._rctrl.runner_update(self.name, pipeline, **kwargs)
 
     def _execute_task(self, task):
         func, args, kwargs = task.workload
@@ -156,7 +156,7 @@ class TaskueRunner:
                 break
 
             # exit if marked as dead
-            if self._rctrl.get_runner_status(self.name) == RunnerStatus.DEAD:
+            if self._rctrl.runner_status_get(self.name) == RunnerStatus.DEAD:
                 self.logger.critical("Marked as dead, shutting down")
                 sys.exit(1)
 
@@ -172,20 +172,20 @@ class TaskueRunner:
                 self.logger.debug("No work, sleep for {}s", HEARTBEAT_TIMEOUT)
                 continue
 
-            if queue == self._rctrl.new_workfows_queue:
+            if queue == self._rctrl.keys.new_workflows:
                 # start new workflow
                 self.logger.info("Start workflow (UID: {})", workflow.title)
-                workflow = self._rctrl.get_workflow(uid)
-                workflow.start()
+                workflow = self._rctrl.workflow_get(uid)
+                workflow.start(self._rctrl)
             else:
-                task = self._rctrl.get_task(uid)
+                task = self._rctrl.task_get(uid)
                 task.runner = self.name
                 task.status = TaskStatus.RUNNING
                 task.started_at = time.time()
 
                 with self._rctrl.pipeline() as pipeline:
                     # update task status to running
-                    task.save(pipeline=pipeline)
+                    task.save(self._rctrl, pipeline=pipeline)
 
                     # update runner status to busy and set its task to the task uid
                     self._update(pipeline=pipeline, status=RunnerStatus.BUSY, task=task.uid)
@@ -214,21 +214,21 @@ class TaskueRunner:
                     task.executed_at = time.time()
 
                 # exit if marked as dead
-                if self._rctrl.get_runner_status(self.name) == RunnerStatus.DEAD:
+                if self._rctrl.runner_status_get(self.name) == RunnerStatus.DEAD:
                     self.logger.critical("Marked as dead, shutting down")
                     sys.exit(1)
 
                 with self._rctrl.pipeline() as pipeline:
                     # save task result
-                    task.save(pipeline=pipeline)
+                    task.save(self._rctrl, pipeline=pipeline)
 
                     # if task is part of workflow, update workflow
                     if task.workflow:
                         # acquire lock for this workflow to prevent race conditions
                         with self._rctrl.lock(task.workflow):
-                            workflow = self._rctrl.get_workflow(task.workflow)
+                            workflow = self._rctrl.workflow_get(task.workflow)
                             workflow.update_task(task)
-                            workflow.update(pipeline=pipeline)
+                            workflow.update(self._rctrl, pipeline=pipeline)
 
                     # set runner status to idle
                     self._update(pipeline, status=RunnerStatus.IDEL, task=0)
@@ -237,17 +237,15 @@ class TaskueRunner:
     def start(self):
         """ Start the runner """
         # register signals handler
-        for signal_type in (signal.SIGTERM, signal.SIGKILL, signal.SIGINT):
-            signal.signal(signal_type, self.stop)
-
-        if self.run_untaged_tasks:
-            self.queues.insert(0, "default")
-
+        # for signal_type in (signal.SIGTERM, signal.SIGKILL, signal.SIGINT):
+            # signal.signal(signal_type, self.stop)
+        
+        self._queues.append(self._rctrl.keys.task_queue % "default")
         for queue in self.queues:
-            self._queues.append(self._rctrl.queued_tasks_queue % queue)
+            self._queues.append(self._rctrl.keys.task_queue % queue)
 
         # add new workflows queue
-        self._queues.append(self._rctrl.new_workfows_queue)
+        self._queues.append(self._rctrl.keys.new_workflows)
 
         # send heartbeat
         self._send_heartbeat()
