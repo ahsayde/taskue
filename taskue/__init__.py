@@ -11,10 +11,10 @@ from taskue.workflow import WORKFLOW_DONE_STATES, WorkflowResult, WorkflowStatus
 
 
 logging_format = (
-    "<light-blue>{time: YYYY-MM-DD at HH:mm:ss}</> | {extra[app]} | <level>{level}</> | <level>{message}</>"
+    "<light-blue>{time: YYYY-MM-DD at HH:mm:ss}</> | <level>{level}</> | <level>{message}</>"
 )
 logger.configure(
-    handlers=[dict(sink=sys.stderr, format=logging_format, colorize=True)]
+    handlers=[dict(sink=sys.stderr, format=logging_format, colorize=True, level=15)]
 )
 
 

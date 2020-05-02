@@ -22,7 +22,6 @@ taskue runner start --redis-host <localhost> --redis-port <6379>
 More options: 
 - `tags`: Runner tags, taged tasks will run only on runners which has its tag
 - `timeout`: Runner timeout, task timeout overwrites it (default 1 hour)
-- `run_untaged_tasks`: Allow runner to run untaged tasks (enabled by default).
 - `path`: add the path of a module to include.
 
 

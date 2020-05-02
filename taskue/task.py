@@ -4,6 +4,7 @@ import pickle
 import time
 import uuid
 import json
+import inspect
 from enum import Enum
 
 __all__ = ("Task", "TaskStatus", "TaskSummary", "TaskResult", "Conditions")
@@ -69,6 +70,12 @@ class Base:
         self._skipped_at = kwargs.get("_skipped_at", None)
         self._terminated_at = kwargs.get("_terminated_at", None)
         self._executed_at = kwargs.get("_executed_at", None)
+
+    @property
+    def json(self):
+        ddict = self.__dict__.copy()
+        ddict.pop("_workload")
+        return ddict
 
     @property
     def uid(self):
@@ -225,7 +232,12 @@ class Task(Base):
 
     def execute(self, func: callable, *args, **kwargs):
         """ Sets task's workload """
+        module = inspect.getmodule(func)
         self._workload = pickle.dumps((func, args, kwargs))
+        self._workload_info["module_name"] = module.__name__
+        self._workload_info["module_path"] = getattr(module, "__file__", None)
+
+        
 
 
 class TaskResult(Base):
@@ -246,12 +258,6 @@ class TaskResult(Base):
             TaskStatus.ERRORED,
             TaskStatus.TERMINATED,
         ]
-    
-    @property
-    def json(self):
-        ddict = self.__dict__.copy()
-        ddict.pop("_workload")
-        return ddict
 
 
 class _Task(Base):

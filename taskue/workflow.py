@@ -74,6 +74,10 @@ class Base:
     def is_done(self):
         return self.status in WORKFLOW_DONE_STATES
 
+    @property
+    def json(self):
+        return self.__dict__
+
 
 class WorkflowResult(Base):
     """ Workflow result class """

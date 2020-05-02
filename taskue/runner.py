@@ -1,18 +1,18 @@
 import importlib
+import inspect
 import os
 import pickle
+import signal
 import sys
 import time
 import traceback
-import signal
 from uuid import uuid4
 
 import gevent
 import redis
 from taskue import logger
-from taskue.task import TaskStatus, _Task
 from taskue.controller import RedisController
-
+from taskue.task import TaskStatus, _Task
 
 HEARTBEAT_TIMEOUT = 10
 HEARTBEAT_MAX_DELAY = 5
@@ -38,6 +38,8 @@ class Loader:
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[spec.name] = module
                 spec.loader.exec_module(module)
+            else:
+                raise ModuleNotFoundError(f"module {path} is not found")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         del sys.modules[self.task.workload_info["module_name"]]
@@ -51,7 +53,6 @@ class TaskueRunner:
         namespace: str = "default",
         queues: list = None,
         timeout: int = 3600,
-        run_untaged_tasks: bool = True,
         auto_load_modules: bool = False,
     ):
         self.name = name or uuid4().hex[:10]
@@ -59,106 +60,109 @@ class TaskueRunner:
         self.queues = queues or []
         self.timeout = timeout
         self.auto_load_modules = auto_load_modules
-        self.logger = logger.bind(app="RUNNER %s" % self.name)
         self._stop = False
         self._queues = []
-        self._rctrl = RedisController(redis_conn, namespace)
+        self._ctrl = RedisController(redis_conn, namespace)
 
     def _register(self):
         """Register runner
         """
-        self._rctrl.runner_register(
-            name=self.name,
-            namespace=self.namespace,
-            status=RunnerStatus.IDEL,
-            queues=self.queues,
-            timeout=self.timeout
+        self._ctrl.runner_register(
+            name=self.name, namespace=self.namespace, status=RunnerStatus.IDEL, queues=self.queues, timeout=self.timeout
         )
 
     def _monitor_runners(self):
         """Monitor other runners and reschedule dead runners's tasks
         """
         # skip if monitoring job is done by another runner in the last 30 seconds
-        if not self._rctrl.acquire_monitoring_task(self.name, timeout=30):
+        if not self._ctrl.acquire_monitoring_task(self.name, timeout=30):
             return
 
-        for runner in self._rctrl.runners_list():
+        for runner in self._ctrl.runners_list():
             # skip current runner, healthy and none active runners
             if (
-                self._rctrl.is_runner_healthy(runner["name"])
+                self._ctrl.is_runner_healthy(runner["name"])
                 or runner["name"] == self.name
                 or runner["status"] in [RunnerStatus.DEAD, RunnerStatus.STOPPED]
             ):
                 continue
 
-            with self._rctrl.pipeline() as pipeline:
+            with self._ctrl.pipeline() as pipeline:
                 # change runner status to dead
-                self.logger.warning("Runner {} is dead", runner["name"])
-                self._rctrl.runner_update(runner["name"], pipeline=pipeline, status=RunnerStatus.DEAD)
+                logger.warning("Runner {} is dead", runner["name"])
+                self._ctrl.runner_update(runner["name"], pipeline=pipeline, status=RunnerStatus.DEAD)
 
                 # if the runner is busy then reschedule its task if rescheduling is enabled
                 if runner["status"] == RunnerStatus.BUSY:
-                    task = self._rctrl.task_get(runner["task"])
+                    task = self._ctrl.task_get(runner["task"])
                     if task.allow_rescheduling:
                         logger.info("Re-scheduling task {}", runner["task"])
-                        task.reschedule(self._rctrl, pipeline=pipeline)
+                        task.reschedule(self._ctrl, pipeline=pipeline)
                     else:
                         logger.info("Terminate task {}", runner["task"])
-                        task.terminate(self._rctrl, pipeline=pipeline)
+                        task.terminate(self._ctrl, pipeline=pipeline)
 
                     # if the task is part of a workflow, update the workflow
                     if task.workflow:
-                        workflow = self._rctrl.workflow_get(task.workflow)
+                        workflow = self._ctrl.workflow_get(task.workflow)
                         workflow.update_task(task)
-                        workflow.update(self._rctrl, pipeline=pipeline)
+                        workflow.update(self._ctrl, pipeline=pipeline)
 
                 pipeline.execute()
 
     def _send_heartbeat(self, timeout=None):
         """Send heartbeat with timeout
         """
+        logger.debug("Sending heartbeat")
         timeout = (timeout or HEARTBEAT_TIMEOUT) + HEARTBEAT_MAX_DELAY
-        self._rctrl.heartbeat_send(self.name, timeout)
+        self._ctrl.heartbeat_send(self.name, timeout)
 
     def _update(self, pipeline=None, **kwargs):
         """update runner info
         """
-        self._rctrl.runner_update(self.name, pipeline, **kwargs)
+        self._ctrl.runner_update(self.name, pipeline, **kwargs)
+
+    def _die_if_marked_as_dead(self):
+        if self._ctrl.runner_status_get(self.name) == RunnerStatus.DEAD:
+            logger.critical("Marked as dead, shutting down")
+            sys.exit(1)
+
+    def _timeout_handler(self, signum, frame):
+        raise TimeoutError()
 
     def _execute_task(self, task):
         func, args, kwargs = task.workload
         timeout = task.timeout or self.timeout
-        for attempt in range(max(task.retries, 1)):
-            task.attempts += 1
-            self.logger.info("Executing attempt %s of {}", task.attempts, task.retries)
 
+        for attempt in range(max(task.retries, 1)):
+            # send heartbeat with timeout of the task
             self._send_heartbeat(timeout=timeout)
+            # set signal alarm
+            if timeout:
+                signal.signal(signal.SIGALRM, self._timeout_handler)
+                signal.alarm(timeout)
             try:
-                if timeout:
-                    task.result = gevent.with_timeout(timeout, func, *args, **kwargs)
-                else:
-                    task.result = func(*args, **kwargs)
-            except Exception as err:
+                task.result = func(*args, **kwargs)
+                task.status = TaskStatus.PASSED
+            except Exception as e:
                 if attempt < task.retries - 1:
-                    self.logger.exception(str(err))
+                    logger.exception(e)
                     continue
                 else:
-                    raise err
-            else:
-                task.status = TaskStatus.PASSED
-                break
+                    raise
+            finally:
+                task.attempts += 1
+                signal.alarm(0)
 
     def _start(self):
         while True:
+            # exit if the runner marked as dead by other runners
+            self._die_if_marked_as_dead()
+
             # exit if recived stop signal
             if self._stop:
                 self._update(status=RunnerStatus.STOPPED)
-                break
-
-            # exit if marked as dead
-            if self._rctrl.runner_status_get(self.name) == RunnerStatus.DEAD:
-                self.logger.critical("Marked as dead, shutting down")
-                sys.exit(1)
+                sys.exit()
 
             # send heartbeat
             self._send_heartbeat()
@@ -167,69 +171,62 @@ class TaskueRunner:
             self._monitor_runners()
 
             # wait for new workflows or tasks
-            queue, uid = self._rctrl.blpop(self._queues, timeout=3)
+            queue, uid = self._ctrl.blpop(self._queues, timeout=3)
             if not (queue and uid):
-                self.logger.debug("No work, sleep for {}s", HEARTBEAT_TIMEOUT)
                 continue
 
-            if queue == self._rctrl.keys.new_workflows:
-                # start new workflow
-                self.logger.info("Start workflow (UID: {})", uid)
-                workflow = self._rctrl.workflow_get(uid)
-                workflow.start(self._rctrl)
+            if queue == self._ctrl.keys.new_workflows:
+                logger.info("Starting workflow (UID: {})", uid)
+                workflow = self._ctrl.workflow_get(uid)
+                workflow.start(self._ctrl)
             else:
-                task = self._rctrl.task_get(uid)
+                logger.info("Executing task (UID: {})", uid)
+                task = self._ctrl.task_get(uid)
                 task.runner = self.name
                 task.status = TaskStatus.RUNNING
                 task.started_at = time.time()
 
-                with self._rctrl.pipeline() as pipeline:
+                with self._ctrl.pipeline() as pipeline:
                     # update task status to running
-                    task.save(self._rctrl, pipeline=pipeline)
-
+                    task.save(self._ctrl, pipeline=pipeline)
                     # update runner status to busy and set its task to the task uid
                     self._update(pipeline=pipeline, status=RunnerStatus.BUSY, task=task.uid)
 
-                self.logger.info("Executing task (UID: {})", task.uid)
                 try:
                     # load task module if auto loading is enabled
                     if self.auto_load_modules:
-                        with ModuleLoader(task):
+                        with Loader(task):
                             self._execute_task(task)
                     else:
                         self._execute_task(task)
 
-                except gevent.Timeout:
+                except (pickle.UnpicklingError, ModuleNotFoundError):
+                    task.status = TaskStatus.ERRORED
+                    task.result = traceback.format_exc()
+
+                except TimeoutError:
                     task.status = TaskStatus.TIMEDOUT
 
-                except pickle.UnpicklingError as e:
-                    task.status = TaskStatus.ERRORED
-                    task.result = str(e)
-
-                except:
+                except Exception:
                     task.status = TaskStatus.FAILED
                     task.result = traceback.format_exc()
 
                 finally:
                     task.executed_at = time.time()
 
-                # exit if marked as dead
-                if self._rctrl.runner_status_get(self.name) == RunnerStatus.DEAD:
-                    self.logger.critical("Marked as dead, shutting down")
-                    sys.exit(1)
+                # exit without saving task if marked as dead
+                self._die_if_marked_as_dead()
 
-                with self._rctrl.pipeline() as pipeline:
+                with self._ctrl.pipeline() as pipeline:
                     # save task result
-                    task.save(self._rctrl, pipeline=pipeline)
-
+                    task.save(self._ctrl, pipeline=pipeline)
                     # if task is part of workflow, update workflow
                     if task.workflow:
                         # acquire lock for this workflow to prevent race conditions
-                        with self._rctrl.lock(task.workflow):
-                            workflow = self._rctrl.workflow_get(task.workflow)
+                        with self._ctrl.lock(task.workflow):
+                            workflow = self._ctrl.workflow_get(task.workflow)
                             workflow.update_task(task)
-                            workflow.update(self._rctrl, pipeline=pipeline)
-
+                            workflow.update(self._ctrl, pipeline=pipeline)
                     # set runner status to idle
                     self._update(pipeline, status=RunnerStatus.IDEL, task=0)
                     pipeline.execute()
@@ -237,15 +234,15 @@ class TaskueRunner:
     def start(self):
         """ Start the runner """
         # register signals handler
-        # for signal_type in (signal.SIGTERM, signal.SIGKILL, signal.SIGINT):
-            # signal.signal(signal_type, self.stop)
-        
-        self._queues.append(self._rctrl.keys.task_queue % "default")
+        for signal_type in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(signal_type, self.stop)
+
+        self._queues.append(self._ctrl.keys.task_queue % "default")
         for queue in self.queues:
-            self._queues.append(self._rctrl.keys.task_queue % queue)
+            self._queues.append(self._ctrl.keys.task_queue % queue)
 
         # add new workflows queue
-        self._queues.append(self._rctrl.keys.new_workflows)
+        self._queues.append(self._ctrl.keys.new_workflows)
 
         # send heartbeat
         self._send_heartbeat()
@@ -254,15 +251,14 @@ class TaskueRunner:
         self._register()
 
         # start work loop
-        self.logger.info("Taskue runner (name: {}) is running", self.name)
+        logger.info("Taskue runner (name: {}) is started", self.name)
         self._start()
 
     def stop(self):
         """ Stop the runner gracefully """
-        if not self._stop:
-            self.logger.info("Shutting down gracefully, please wait ...")
-            self._update(status=RunnerStatus.STOPPING)
-            self._stop = True
+        logger.info("Shutting down gracefully, please wait ...")
+        self._update(status=RunnerStatus.STOPPING)
+        self._stop = True
 
 
 if __name__ == "__main__":

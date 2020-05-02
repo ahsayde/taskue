@@ -4,6 +4,7 @@ import pathlib
 import json
 import yaml
 import click
+import functools
 import toml
 import math
 from tabulate import tabulate
@@ -17,9 +18,6 @@ DEFAULT_CONFIG = dict(redis_host="127.0.0.1", redis_port=6379, redis_secret=None
 
 CONFIG_PATH = os.path.expanduser("~/.taskue.toml")
 pathlib.Path(CONFIG_PATH).touch(exist_ok=True)
-
-
-
 
 
 status_color_map = {
@@ -47,10 +45,6 @@ def save_config(config, validate=True):
     pathlib.Path(CONFIG_PATH).write_text(toml.dumps(config))
 
 
-def color_status(status):
-    return click.style(status.capitalize(), fg=status_color_map.get(status))
-
-
 def validate_config(config):
     try:
         assert config.get("redis_host")
@@ -61,7 +55,6 @@ def validate_config(config):
 
 
 def success(message):
-    click.echo(click.style("Namespace [default]", bg="yellow", fg="black"))
     click.echo(click.style(message, fg="white"))
     sys.exit()
 
@@ -69,6 +62,10 @@ def success(message):
 def fail(message):
     click.echo(click.style("error: %s" % message, fg="bright_red"), err=True)
     sys.exit(1)
+
+
+def color_status(status):
+    return click.style(status.capitalize(), fg=status_color_map.get(status))
 
 
 def to_yes_or_no(value):
@@ -131,7 +128,14 @@ stages
 """.strip()
 )
 
-
+workflows_template = jinja_env.from_string(
+"""
+UID                 TITLE                   STATUS                                           CREATED AT
+{%- for workflow in workflows %}
+{{workflow.uid}}    {{workflow.title}}      {{workflow.status.value | color_status}}         {{workflow.done_at | datetime}}
+{%- endfor -%}
+""".strip()
+)
 
 
 
@@ -195,7 +199,6 @@ def task(ctx):
 
 ## Config
 
-
 @config.command(name="show", help="Show current configuration")
 @click.pass_context
 def config_show(ctx):
@@ -242,7 +245,6 @@ def config_reset(ctx):
 
 ## Namespace
 
-
 @namespace.command(name="list", help="List namespaces")
 @click.pass_context
 def namespace_list(ctx):
@@ -279,21 +281,18 @@ def namespace_delete(ctx, name):
 
 ## Runner
 
-
 @runner.command(name="start", help="Start new taskue runner")
 @click.option("--name", "-n", default=None, type=str, help="Runner name (should be unique)")
 @click.option("--timeout", "-t", default=3600, type=int, help="Runner default timeout")
 @click.option("--queues", "-q", multiple=True, type=str, default=None)
-@click.option("--run-untaged-tasks", "-a", is_flag=True)
 @click.pass_context
-def runner_start(ctx, name, queues, timeout, run_untaged_tasks):
+def runner_start(ctx, name, queues, timeout):
     runner = TaskueRunner(
         ctx.obj["redis"],
         namespace=ctx.obj["namespace"],
         name=name,
         queues=queues,
         timeout=timeout,
-        run_untaged_tasks=run_untaged_tasks,
     )
     runner.start()
 
@@ -317,30 +316,26 @@ def runner_list(ctx):
 
 ## Workflow
 
-@workflow.command(name="list", help="List workflows")
-@click.pass_context
+@workflow.command(name="get", help="list or get workflow(s)")
+@click.argument("uid", type=str, required=False)
 @click.option("--page", "-p", default=1, type=int, help="page number")
-@click.option("--limit", "-l", default=50, type=int, help="results per page")
-@click.option("--output", "-o", type=click.Choice(["json", "yaml"]))
-def workflow_list(ctx, page, limit, output):
-    items = []
-    for workflow in ctx.obj["taskue"].workflow_list(page=page, limit=limit):
-        items.append(
-            (workflow.uid, workflow.title, color_status(workflow.status.value), to_datetime(workflow.created_at))
-        )
-    click.echo(tabulate(items, ("UID", "TITLE", "STATUS", "CREATED AT")))
-
-
-@workflow.command(name="get", help="Get workflow info")
-@click.argument("uid", type=str)
-@click.option("--output", "-o", type=click.Choice(["json", "yaml"]))
+@click.option("--limit", "-l", default=50, type=int, help="number of results per page")
 @click.pass_context
-def workflow_get(ctx, uid, output):
-    workflow = ctx.obj["taskue"].workflow_get(uid)
-    if json:
-        click.echo(json.dumps(workflow, default=lambda o: o.__dict__, indent=4))
+def workflows_get(ctx, uid, page, limit):
+    cl = ctx.obj["taskue"]
+    if uid:
+        try:
+            workflow = ctx.obj["taskue"].workflow_get(uid)
+        except NotFound as e:
+            fail(e)
+
+        success(workflow_template.render(workflow=workflow))
     else:
-        click.echo(workflow_template.render(workflow=workflow).replace('None', click.style('none', dim=True)))
+        workflows = []
+        for workflow in cl.workflow_list(page=page, limit=limit):
+            workflows.append(workflow)
+        
+        success(workflows_template.render(workflows=workflows))
 
 
 @workflow.command(name="wait", help="Wait for workflow to finish")
@@ -370,37 +365,46 @@ def workflow_delete(ctx, uid):
 
 ## Task
 
-@task.command(name="list", help="List tasks")
-@click.pass_context
+@task.command(name="get", help="list or get  task(s)")
+@click.argument("uid", type=str, required=False)
+@click.option("--output", "-o", type=click.Choice(["json", "yaml"]), help="export results")
 @click.option("--page", "-p", default=1, type=int, help="page number")
-@click.option("--limit", "-l", default=50, type=int, help="results per page")
-@click.option("--output", "-o", type=click.Choice(["json", "yaml"]))
-def task_list(ctx, page, limit, output):
-    items = []
-    for task in ctx.obj["taskue"].task_list(page=page, limit=limit):
-        items.append(
-            (task.uid, task.title, color_status(task.status.value), task.workflow, to_datetime(task.created_at))
-        )
-    click.echo(tabulate(items, ("UID", "TITLE", "STATUS", "WORKFLOW", "CREATED AT")))
-
-
-@task.command(name="get", help="Get task info")
-@click.argument("uid", type=str)
-@click.option("--output", "-o", type=click.Choice(["json", "yaml"]))
+@click.option("--limit", "-l", default=50, type=int, help="number of results per page")
 @click.pass_context
-def task_get(ctx, uid, output):
-    try:
-        task = ctx.obj["taskue"].task_get(uid)
-    except NotFound as e:
-        return fail(e)
-
-    if output:
-        if output == "json":
-            click.echo(json.dumps(task.json, indent=4))
-        elif output == "yaml":
-            click.echo(yaml.dump(task.json, indent=4))
+def task_get(ctx, uid, output, page, limit):
+    cl = ctx.obj["taskue"]
+    if uid:
+        try:
+            result = cl.task_get(uid)
+        except NotFound as e:
+            return fail(e)
     else:
-        click.echo(task_template.render(task=task))
+        result = []
+        for task in cl.task_list(page=page, limit=limit):
+            result.append(task)
+
+    success(result[0].__dict__)
+
+    # if not output:
+    #     if uid:
+    #         success(task_template.render(task=result))
+    # else:
+    #     if output == "json":
+    #         success(json.dumps(result, default=lambda o: o.json, indent=4))
+    #     elif output == "yaml":
+    #         success(yaml.dump(result, default=lambda o: o.json, indent=4))
+
+
+    # if result and output:
+    #     if output == "json":
+    #         result = json.dumps(result, default=lambda o: o.json, indent=4)
+    #     elif output == "yaml":
+    #         result = yaml.dump(result, default=lambda o: o.json, indent=4)
+
+    # if uid:
+    #     success(task_template.render(task=result))
+    # else:
+    #     pass
 
 
 @task.command(name="wait", help="Wait for task to finish")
@@ -413,7 +417,7 @@ def task_wait(ctx, uid, timeout):
     except Exception as e:
         fail(e)
     else:
-        success("task is finished")
+        success("task is done")
 
 
 @task.command(name="delete", help="Delete task")
