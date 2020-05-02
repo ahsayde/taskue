@@ -190,7 +190,7 @@ class _Workflow(Base):
             if (
                 self.current_stage == 0
                 or task.when == Conditions.ALWAYS
-                or (prev_status == StageStatus.PASSED and Conditions.ON_SUCCESS)
+                or (prev_status == StageStatus.PASSED and task.when == Conditions.ON_SUCCESS)
                 or (prev_status != StageStatus.PASSED and task.when == Conditions.ON_FAILURE)
             ):
                 task.queue(rctrl, pipeline)

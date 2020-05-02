@@ -54,7 +54,7 @@ class Base:
         self._when = kwargs.get("_when", Conditions.ALWAYS)
         self._timeout = kwargs.get("_timeout", 3600)
         self._allow_failure = kwargs.get("_allow_failure", False)
-        self._reschedule = kwargs.get("_reschedule", True)
+        self._allow_rescheduling = kwargs.get("_allow_rescheduling", True)
         self._stage = kwargs.get("_stage", 1)
         self._workload = kwargs.get("_workload", None)
         self._workload_info = kwargs.get("_workload_info", dict())
@@ -106,8 +106,8 @@ class Base:
         return self._allow_failure
 
     @property
-    def reschedule(self):
-        return self._reschedule
+    def allow_rescheduling(self):
+        return self._allow_rescheduling
 
     @property
     def attempts(self):
@@ -181,7 +181,7 @@ class Task(Base):
         tag: str = None,
         timeout: int = None,
         allow_failure: bool = False,
-        reschedule: bool = True,
+        allow_rescheduling: bool = True,
         when: str = Conditions.ON_SUCCESS,
     ):
         Base.__init__(
@@ -191,7 +191,7 @@ class Task(Base):
             _tag=tag,
             _timeout=timeout,
             _allow_failure=allow_failure,
-            _reschedule=reschedule,
+            _allow_rescheduling=allow_rescheduling,
             _when=when,
         )
 
@@ -220,10 +220,10 @@ class Task(Base):
         """ Sets task's allow_failure flag """
         self._allow_failure = allow_failure
 
-    @Base.reschedule.setter  # pylint: disable=no-member
-    def reschedule(self, reschedule: bool):
+    @Base.allow_rescheduling.setter  # pylint: disable=no-member
+    def allow_rescheduling(self, allow_rescheduling: bool):
         """ Sets task's reschedule flag """
-        self._reschedule = reschedule
+        self._allow_rescheduling = allow_rescheduling
 
     @Base.when.setter  # pylint: disable=no-member
     def when(self, when: Conditions):
@@ -350,8 +350,7 @@ class _Task(Base):
     def reschedule(self, rctrl, pipeline=None):
         self.runner = None
         self.rescheduleded += 1
-        self.queued_at = time.time()
-        self.save(rctrl, pipeline=pipeline)
+        self.queue(rctrl, pipeline=pipeline)
 
     def terminate(self, rctrl, pipeline):
         self.status = TaskStatus.TERMINATED
@@ -371,4 +370,5 @@ class TaskSummary:
         self.status = task.status
         self.stage = task.stage
         self.allow_failure = task.allow_failure
+        self.allow_rescheduling = task.allow_rescheduling
         self.rescheduleded = task.rescheduleded > 1

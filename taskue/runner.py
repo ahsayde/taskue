@@ -7,7 +7,7 @@ import sys
 import time
 import traceback
 from uuid import uuid4
-
+from gevent import with_timeout, Timeout
 import gevent
 import redis
 from taskue import logger
@@ -53,12 +53,14 @@ class TaskueRunner:
         namespace: str = "default",
         queues: list = None,
         timeout: int = 3600,
+        run_untagged_tasks: bool = False,
         auto_load_modules: bool = False,
     ):
         self.name = name or uuid4().hex[:10]
         self.namespace = namespace
         self.queues = queues or []
         self.timeout = timeout
+        self.run_untagged_tasks = run_untagged_tasks
         self.auto_load_modules = auto_load_modules
         self._stop = False
         self._queues = []
@@ -127,9 +129,6 @@ class TaskueRunner:
             logger.critical("Marked as dead, shutting down")
             sys.exit(1)
 
-    def _timeout_handler(self, signum, frame):
-        raise TimeoutError()
-
     def _execute_task(self, task):
         func, args, kwargs = task.workload
         timeout = task.timeout or self.timeout
@@ -137,16 +136,15 @@ class TaskueRunner:
         for attempt in range(max(task.retries, 1)):
             # send heartbeat with timeout of the task
             self._send_heartbeat(timeout=timeout)
-            # set signal alarm
-            if timeout:
-                signal.signal(signal.SIGALRM, self._timeout_handler)
-                signal.alarm(timeout)
             try:
-                task.result = func(*args, **kwargs)
+                if timeout:
+                    task.result = with_timeout(timeout, func, *args, **kwargs)
+                else:
+                    task.result = func(*args, **kwargs)
+
                 task.status = TaskStatus.PASSED
             except Exception as e:
                 if attempt < task.retries - 1:
-                    logger.exception(e)
                     continue
                 else:
                     raise
@@ -191,6 +189,7 @@ class TaskueRunner:
                     task.save(self._ctrl, pipeline=pipeline)
                     # update runner status to busy and set its task to the task uid
                     self._update(pipeline=pipeline, status=RunnerStatus.BUSY, task=task.uid)
+                    pipeline.execute()
 
                 try:
                     # load task module if auto loading is enabled
@@ -204,7 +203,7 @@ class TaskueRunner:
                     task.status = TaskStatus.ERRORED
                     task.result = traceback.format_exc()
 
-                except TimeoutError:
+                except Timeout:
                     task.status = TaskStatus.TIMEDOUT
 
                 except Exception:
@@ -237,7 +236,12 @@ class TaskueRunner:
         for signal_type in (signal.SIGTERM, signal.SIGINT):
             signal.signal(signal_type, self.stop)
 
-        self._queues.append(self._ctrl.keys.task_queue % "default")
+        if not (self.run_untagged_tasks or self.queues):
+            raise ValueError("Queues can not be empty when runner is not allowed to run untagged tasks")
+
+        if self.run_untagged_tasks:
+            self._queues.append(self._ctrl.keys.task_queue % "default")
+
         for queue in self.queues:
             self._queues.append(self._ctrl.keys.task_queue % queue)
 

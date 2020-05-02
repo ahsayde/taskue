@@ -218,5 +218,5 @@ class RedisController:
 
     def task_delete(self, task_uid: str, pipeline: Pipeline = None):
         connection = pipeline if pipeline is not None else self._connection
-        connection.hdel(self.keys.task % task_uid)
+        connection.delete(self.keys.task % task_uid)
         connection.zrem(self.keys.tasks, task_uid)

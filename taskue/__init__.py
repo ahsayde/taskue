@@ -50,7 +50,7 @@ class Taskue:
             return self._enqueue_task(work)
 
         elif isinstance(work, list):
-            return self._enqueue_workflow(work)
+            return self._enqueue_workflow(work, title)
 
     def _enqueue_task(self, task: Task, title: str = None) -> str:
         task = _Task(task)
@@ -230,13 +230,15 @@ class Taskue:
 
         Args:
             task_uid (str): task unique id.
-
         Raises:
-            InvalidAction: raises if task is a part of a workflow.
+            InvalidAction: raises if task is a part of a workflow or it is still running.
         """
         task = self.task_get(task_uid)
         if task.workflow:
             raise InvalidAction("Cannot delete task which is a part of workflow")
+        
+        elif not task.is_done:
+            raise InvalidAction("Cannot delete unfinished")
 
         self._ctrl.task_delete(task_uid)
 
