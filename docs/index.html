@@ -11,10 +11,11 @@
   <link rel="stylesheet" href="https://unpkg.com/prism-github/prism-github.css">
 	<style>
 		:root {
-      --content-max-width: 70em !important;
+      --content-max-width: 80em !important;
 			--base-font-size: 16px;
       --sidebar-toggle-offset-left: 50;
 			--theme-hue: 204;
+      --sidebar-width: 19rem;
       --sidebar-background: #fff;
       --sidebar-border-width: 0;
       --sidebar-toggle-background: none;
@@ -27,6 +28,13 @@
       --copycode-background: #F7F9F9;
       --copycode-color     : #21618C;
       --strong-color: #808B96;
+      --heading-h3-font-weight: 500;
+      --heading-h4-font-weight: 500;
+      --heading-h5-font-weight: 500;
+      --heading-h6-font-weight: 500;
+      --code-inline-background: #F0F3F4;
+      --code-inline-border-radius: 5px;
+      --code-inline-color: #2874A6;
 		}
     mark{
       padding: 5px 20px;
@@ -37,6 +45,19 @@
       background-color: #F5EEF8;
       margin-right: 10px !important;
       font-family: var(--code-font-family);
+    }
+    dt {
+      margin-bottom: 4px;
+    }
+    dd {
+      margin-left: 0px;
+      margin-bottom: 17px;
+    }
+    iframe {
+      border: none;
+      height: auto;
+      width: 100%;
+      min-height: 1000px;
     }
 	</style>
 </head>
@@ -52,8 +73,8 @@
 			homepage   : 'README.md',
 			loadSidebar: 'sidebar.md',
 			auto2top   : true,
-			maxLevel   : 4, 
-      subMaxLevel: 3,
+			// maxLevel   : 2, 
+      subMaxLevel: 2,
       
       search: {
         placeholder: 'Search ...'

@@ -1,0 +1,1126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+<meta name="generator" content="pdoc 0.8.1" />
+<title>taskue API documentation</title>
+<meta name="description" content="" />
+<link href='https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.0/normalize.min.css' rel='stylesheet'>
+<link href='https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/8.0.0/sanitize.min.css' rel='stylesheet'>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css" rel="stylesheet">
+<style>.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:30px;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:1em 0 .50em 0}h3{font-size:1.4em;margin:25px 0 10px 0}h4{margin:0;font-size:105%}a{color:#058;text-decoration:none;transition:color .3s ease-in-out}a:hover{color:#e82}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900}pre code{background:#f8f8f8;font-size:.8em;line-height:1.4em}code{background:#f2f2f1;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{background:#f8f8f8;border:0;border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0;padding:1ex}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-weight:bold;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}.admonition{padding:.1em .5em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.item .name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul{padding-left:1.5em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Package <code>taskue</code></h1>
+</header>
+<section id="section-intro">
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">import pickle
+import sys
+import time
+from typing import Iterator, Sequence, Union
+
+from loguru import logger
+from redis import Redis
+from taskue.task import TASK_DONE_STATES, Conditions, Task, TaskResult, TaskStatus, TaskSummary, _Task
+from taskue.controller import RedisController
+from taskue.workflow import WORKFLOW_DONE_STATES, WorkflowResult, WorkflowStatus, _Workflow
+
+
+logging_format = (
+    &#34;&lt;light-blue&gt;{time: YYYY-MM-DD at HH:mm:ss}&lt;/&gt; | &lt;level&gt;{level}&lt;/&gt; | &lt;level&gt;{message}&lt;/&gt;&#34;
+)
+logger.configure(
+    handlers=[dict(sink=sys.stderr, format=logging_format, colorize=True, level=15)]
+)
+
+
+class Taskue:
+    def __init__(self, redis_conn: Redis, namespace: str = &#34;default&#34;):
+        &#34;&#34;&#34;Taskue client
+
+        Args:
+            redis_conn (Redis): redis connection
+            namespace (str, optional): namespace. Defaults to &#34;default&#34;.
+        &#34;&#34;&#34;
+        self._namespace = namespace
+        self._ctrl = RedisController(redis_conn, namespace=namespace)
+
+    @property
+    def namespace(self):
+        &#34;&#34;&#34;Current namespace
+        &#34;&#34;&#34;
+        return self._namespace
+
+    def enqueue(self, work: Union[Task, Sequence[Sequence[Task]]], title: str = &#34;&#34;) -&gt; str:
+        &#34;&#34;&#34;Enqueue task or multiple tasks as a workflow
+
+        Args:
+            work (Union[Task, Sequence[Sequence[Task]]]): task or list of lists of tasks.
+            title (str, optional): task / workflow title. Defaults to &#34;&#34;.
+
+        Returns:
+            str: task / workflow unique id
+        &#34;&#34;&#34;
+        title = title or &#34;Untitled&#34;
+        if isinstance(work, Task):
+            return self._enqueue_task(work)
+
+        elif isinstance(work, list):
+            return self._enqueue_workflow(work, title)
+
+    def _enqueue_task(self, task: Task, title: str = None) -&gt; str:
+        task = _Task(task)
+        task.queue(self._ctrl)
+        return task.uid
+
+    def _enqueue_workflow(self, stages: Sequence[Sequence[Task]], title: str = None):
+        pipeline = self._ctrl.pipeline()
+        workflow = _Workflow()
+        workflow.title = title
+
+        for stage, tasks in enumerate(stages):
+            workflow.stages.append([])
+            for index, task in enumerate(tasks):
+                task = _Task(task)
+                task.tid = index
+                task.stage = stage
+                task.workflow = workflow.uid
+                workflow.stages[stage].append(TaskSummary(task))
+                task.save(self._ctrl, pipeline=pipeline)
+
+        workflow.save(self._ctrl, queue=True, pipeline=pipeline)
+        pipeline.execute()
+        return workflow.uid
+
+    def namespace_list(self) -&gt; Sequence[dict]:
+        &#34;&#34;&#34;List namespaces
+
+        Returns:
+            Sequence[dict]: list of namespaces
+        &#34;&#34;&#34;
+        namespaces = self._ctrl.namespaces_list()
+        return list(namespaces)
+
+    def namespace_delete(self, namespace: str):
+        &#34;&#34;&#34;Delete namespace
+
+        Args:
+            namespace (str): namespace name
+        &#34;&#34;&#34;
+        self._ctrl.namespace_delete(namespace)
+
+    def runner_list(self) -&gt; Sequence[dict]:
+        &#34;&#34;&#34;List runners
+
+        Returns:
+            Sequence[dict]: list of runners
+        &#34;&#34;&#34;
+        runners = self._ctrl.runners_list()
+        return list(runners)
+
+    def workflow_list(self, page: int = 1, limit: int = 25) -&gt; Iterator[WorkflowResult]:
+        &#34;&#34;&#34;List workflows
+
+        Args:
+            page (int, optional): page number. Defaults to 1.
+            limit (int, optional): number of results per page. Defaults to 25.
+
+        Yields:
+            WorkflowResult: workflow result
+        &#34;&#34;&#34;
+        start = (page - 1) * limit
+        end = (page * limit) - 1
+        for workflow in self._ctrl.workflows_list(start, end):
+            yield WorkflowResult(workflow)
+
+    def workflow_get(self, workflow_uid: str) -&gt; WorkflowResult:
+        &#34;&#34;&#34;Get workflow result
+
+        Args:
+            workflow_uid (str): workflow unique id.
+
+        Raises:
+            NotFound: raises if workflow is not found.
+
+        Returns:
+            WorkflowResult: workflow result.
+        &#34;&#34;&#34;
+        workflow = self._ctrl.workflow_get(workflow_uid)
+        if not workflow:
+            raise NotFound(&#34;workflow %s not found&#34; % workflow_uid)
+        return WorkflowResult(workflow)
+
+    def workflow_wait(self, workflow_uid: str, timeout: int = 60) -&gt; WorkflowResult:
+        &#34;&#34;&#34;Wait until workflow finish
+
+        Args:
+            workflow_uid (str): workflow unique id.
+            timeout (int, optional): timeout in seconds. Defaults to 60.
+
+        Raises:
+            Timeout: raises if timeout is exceeded
+
+        Returns:
+            WorkflowResult: workflow result
+        &#34;&#34;&#34;
+        for _ in range(timeout):
+            workflow = self.workflow_get(workflow_uid)
+            if workflow.status in WORKFLOW_DONE_STATES:
+                return workflow
+            else:
+                time.sleep(1)
+        else:
+            raise Timeout(&#34;timeout exceeded&#34;)
+
+    def workflow_delete(self, workflow_uid: str):
+        &#34;&#34;&#34;Delete workflow
+
+        Args:
+            workflow_uid (str): workflow unique id.
+
+        Raises:
+            InvalidAction: raises if workflow is not finished yet.
+        &#34;&#34;&#34;
+        workflow = self.workflow_get(workflow_uid)
+        if not workflow.is_done:
+            raise InvalidAction(&#34;Cannot delete unfinished workflow&#34;)
+
+        self._ctrl.workflow_delete(workflow_uid)
+
+    def task_list(self, page: int = 1, limit: int = 25) -&gt; Iterator[TaskResult]:
+        &#34;&#34;&#34;List tasks
+
+        Args:
+            page (int, optional): page number. Defaults to 1.
+            limit (int, optional): number of results per page. Defaults to 25.
+
+        Yields:
+            TaskResult: task result
+        &#34;&#34;&#34;
+        start = (page - 1) * limit
+        end = (page * limit) - 1
+        for task in self._ctrl.tasks_list(start, end):
+            yield TaskResult(task)
+
+    def task_get(self, task_uid: str) -&gt; TaskResult:
+        &#34;&#34;&#34;Get task result
+
+        Args:
+            task_uid (str): task unique id.
+
+        Raises:
+            NotFound: if task is not found.
+
+        Returns:
+            TaskResult: task result
+        &#34;&#34;&#34;
+        task = self._ctrl.task_get(task_uid)
+        if not task:
+            raise NotFound(&#34;task %s not found&#34; % task_uid)
+        return TaskResult(task)
+
+    def task_wait(self, task_uid: str, timeout: int = 60) -&gt; TaskResult:
+        &#34;&#34;&#34;Wait until the task finish
+
+        Args:
+            task_uid (str): task unique id.
+            timeout (int, optional): timeout in seconds. Defaults to 60.
+
+        Raises:
+            Timeout: if timeout is exceeded.
+
+        Returns:
+            TaskResult: task result.
+        &#34;&#34;&#34;
+        for _ in range(timeout):
+            task = self.task_get(task_uid)
+            if task.status in TASK_DONE_STATES:
+                return task
+            else:
+                time.sleep(1)
+        else:
+            raise Timeout(&#34;timeout exceeded&#34;)
+
+    def task_delete(self, task_uid: str):
+        &#34;&#34;&#34;Delete task by its unique id
+
+        Args:
+            task_uid (str): task unique id.
+        Raises:
+            InvalidAction: raises if task is a part of a workflow or it is still running.
+        &#34;&#34;&#34;
+        task = self.task_get(task_uid)
+        if task.workflow:
+            raise InvalidAction(&#34;Cannot delete task which is a part of workflow&#34;)
+        
+        elif not task.is_done:
+            raise InvalidAction(&#34;Cannot delete unfinished&#34;)
+
+        self._ctrl.task_delete(task_uid)
+
+
+class NotFound(Exception):
+    pass
+
+
+class InvalidAction(Exception):
+    pass
+
+
+class Timeout(Exception):
+    pass</code></pre>
+</details>
+</section>
+<section>
+<h2 class="section-title" id="header-submodules">Sub-modules</h2>
+<dl>
+<dt><code class="name"><a title="taskue.controller" href="controller.html">taskue.controller</a></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt><code class="name"><a title="taskue.runner" href="runner.html">taskue.runner</a></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt><code class="name"><a title="taskue.task" href="task.html">taskue.task</a></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt><code class="name"><a title="taskue.workflow" href="workflow.html">taskue.workflow</a></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="taskue.InvalidAction"><code class="flex name class">
+<span>class <span class="ident">InvalidAction</span></span>
+<span>(</span><span>...)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Common base class for all non-exit exceptions.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class InvalidAction(Exception):
+    pass</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>builtins.Exception</li>
+<li>builtins.BaseException</li>
+</ul>
+</dd>
+<dt id="taskue.NotFound"><code class="flex name class">
+<span>class <span class="ident">NotFound</span></span>
+<span>(</span><span>...)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Common base class for all non-exit exceptions.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class NotFound(Exception):
+    pass</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>builtins.Exception</li>
+<li>builtins.BaseException</li>
+</ul>
+</dd>
+<dt id="taskue.Taskue"><code class="flex name class">
+<span>class <span class="ident">Taskue</span></span>
+<span>(</span><span>redis_conn: redis.client.Redis, namespace: str = 'default')</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Taskue client</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>redis_conn</code></strong> :&ensp;<code>Redis</code></dt>
+<dd>redis connection</dd>
+<dt><strong><code>namespace</code></strong> :&ensp;<code>str</code>, optional</dt>
+<dd>namespace. Defaults to "default".</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Taskue:
+    def __init__(self, redis_conn: Redis, namespace: str = &#34;default&#34;):
+        &#34;&#34;&#34;Taskue client
+
+        Args:
+            redis_conn (Redis): redis connection
+            namespace (str, optional): namespace. Defaults to &#34;default&#34;.
+        &#34;&#34;&#34;
+        self._namespace = namespace
+        self._ctrl = RedisController(redis_conn, namespace=namespace)
+
+    @property
+    def namespace(self):
+        &#34;&#34;&#34;Current namespace
+        &#34;&#34;&#34;
+        return self._namespace
+
+    def enqueue(self, work: Union[Task, Sequence[Sequence[Task]]], title: str = &#34;&#34;) -&gt; str:
+        &#34;&#34;&#34;Enqueue task or multiple tasks as a workflow
+
+        Args:
+            work (Union[Task, Sequence[Sequence[Task]]]): task or list of lists of tasks.
+            title (str, optional): task / workflow title. Defaults to &#34;&#34;.
+
+        Returns:
+            str: task / workflow unique id
+        &#34;&#34;&#34;
+        title = title or &#34;Untitled&#34;
+        if isinstance(work, Task):
+            return self._enqueue_task(work)
+
+        elif isinstance(work, list):
+            return self._enqueue_workflow(work, title)
+
+    def _enqueue_task(self, task: Task, title: str = None) -&gt; str:
+        task = _Task(task)
+        task.queue(self._ctrl)
+        return task.uid
+
+    def _enqueue_workflow(self, stages: Sequence[Sequence[Task]], title: str = None):
+        pipeline = self._ctrl.pipeline()
+        workflow = _Workflow()
+        workflow.title = title
+
+        for stage, tasks in enumerate(stages):
+            workflow.stages.append([])
+            for index, task in enumerate(tasks):
+                task = _Task(task)
+                task.tid = index
+                task.stage = stage
+                task.workflow = workflow.uid
+                workflow.stages[stage].append(TaskSummary(task))
+                task.save(self._ctrl, pipeline=pipeline)
+
+        workflow.save(self._ctrl, queue=True, pipeline=pipeline)
+        pipeline.execute()
+        return workflow.uid
+
+    def namespace_list(self) -&gt; Sequence[dict]:
+        &#34;&#34;&#34;List namespaces
+
+        Returns:
+            Sequence[dict]: list of namespaces
+        &#34;&#34;&#34;
+        namespaces = self._ctrl.namespaces_list()
+        return list(namespaces)
+
+    def namespace_delete(self, namespace: str):
+        &#34;&#34;&#34;Delete namespace
+
+        Args:
+            namespace (str): namespace name
+        &#34;&#34;&#34;
+        self._ctrl.namespace_delete(namespace)
+
+    def runner_list(self) -&gt; Sequence[dict]:
+        &#34;&#34;&#34;List runners
+
+        Returns:
+            Sequence[dict]: list of runners
+        &#34;&#34;&#34;
+        runners = self._ctrl.runners_list()
+        return list(runners)
+
+    def workflow_list(self, page: int = 1, limit: int = 25) -&gt; Iterator[WorkflowResult]:
+        &#34;&#34;&#34;List workflows
+
+        Args:
+            page (int, optional): page number. Defaults to 1.
+            limit (int, optional): number of results per page. Defaults to 25.
+
+        Yields:
+            WorkflowResult: workflow result
+        &#34;&#34;&#34;
+        start = (page - 1) * limit
+        end = (page * limit) - 1
+        for workflow in self._ctrl.workflows_list(start, end):
+            yield WorkflowResult(workflow)
+
+    def workflow_get(self, workflow_uid: str) -&gt; WorkflowResult:
+        &#34;&#34;&#34;Get workflow result
+
+        Args:
+            workflow_uid (str): workflow unique id.
+
+        Raises:
+            NotFound: raises if workflow is not found.
+
+        Returns:
+            WorkflowResult: workflow result.
+        &#34;&#34;&#34;
+        workflow = self._ctrl.workflow_get(workflow_uid)
+        if not workflow:
+            raise NotFound(&#34;workflow %s not found&#34; % workflow_uid)
+        return WorkflowResult(workflow)
+
+    def workflow_wait(self, workflow_uid: str, timeout: int = 60) -&gt; WorkflowResult:
+        &#34;&#34;&#34;Wait until workflow finish
+
+        Args:
+            workflow_uid (str): workflow unique id.
+            timeout (int, optional): timeout in seconds. Defaults to 60.
+
+        Raises:
+            Timeout: raises if timeout is exceeded
+
+        Returns:
+            WorkflowResult: workflow result
+        &#34;&#34;&#34;
+        for _ in range(timeout):
+            workflow = self.workflow_get(workflow_uid)
+            if workflow.status in WORKFLOW_DONE_STATES:
+                return workflow
+            else:
+                time.sleep(1)
+        else:
+            raise Timeout(&#34;timeout exceeded&#34;)
+
+    def workflow_delete(self, workflow_uid: str):
+        &#34;&#34;&#34;Delete workflow
+
+        Args:
+            workflow_uid (str): workflow unique id.
+
+        Raises:
+            InvalidAction: raises if workflow is not finished yet.
+        &#34;&#34;&#34;
+        workflow = self.workflow_get(workflow_uid)
+        if not workflow.is_done:
+            raise InvalidAction(&#34;Cannot delete unfinished workflow&#34;)
+
+        self._ctrl.workflow_delete(workflow_uid)
+
+    def task_list(self, page: int = 1, limit: int = 25) -&gt; Iterator[TaskResult]:
+        &#34;&#34;&#34;List tasks
+
+        Args:
+            page (int, optional): page number. Defaults to 1.
+            limit (int, optional): number of results per page. Defaults to 25.
+
+        Yields:
+            TaskResult: task result
+        &#34;&#34;&#34;
+        start = (page - 1) * limit
+        end = (page * limit) - 1
+        for task in self._ctrl.tasks_list(start, end):
+            yield TaskResult(task)
+
+    def task_get(self, task_uid: str) -&gt; TaskResult:
+        &#34;&#34;&#34;Get task result
+
+        Args:
+            task_uid (str): task unique id.
+
+        Raises:
+            NotFound: if task is not found.
+
+        Returns:
+            TaskResult: task result
+        &#34;&#34;&#34;
+        task = self._ctrl.task_get(task_uid)
+        if not task:
+            raise NotFound(&#34;task %s not found&#34; % task_uid)
+        return TaskResult(task)
+
+    def task_wait(self, task_uid: str, timeout: int = 60) -&gt; TaskResult:
+        &#34;&#34;&#34;Wait until the task finish
+
+        Args:
+            task_uid (str): task unique id.
+            timeout (int, optional): timeout in seconds. Defaults to 60.
+
+        Raises:
+            Timeout: if timeout is exceeded.
+
+        Returns:
+            TaskResult: task result.
+        &#34;&#34;&#34;
+        for _ in range(timeout):
+            task = self.task_get(task_uid)
+            if task.status in TASK_DONE_STATES:
+                return task
+            else:
+                time.sleep(1)
+        else:
+            raise Timeout(&#34;timeout exceeded&#34;)
+
+    def task_delete(self, task_uid: str):
+        &#34;&#34;&#34;Delete task by its unique id
+
+        Args:
+            task_uid (str): task unique id.
+        Raises:
+            InvalidAction: raises if task is a part of a workflow or it is still running.
+        &#34;&#34;&#34;
+        task = self.task_get(task_uid)
+        if task.workflow:
+            raise InvalidAction(&#34;Cannot delete task which is a part of workflow&#34;)
+        
+        elif not task.is_done:
+            raise InvalidAction(&#34;Cannot delete unfinished&#34;)
+
+        self._ctrl.task_delete(task_uid)</code></pre>
+</details>
+<h3>Instance variables</h3>
+<dl>
+<dt id="taskue.Taskue.namespace"><code class="name">var <span class="ident">namespace</span></code></dt>
+<dd>
+<div class="desc"><p>Current namespace</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def namespace(self):
+    &#34;&#34;&#34;Current namespace
+    &#34;&#34;&#34;
+    return self._namespace</code></pre>
+</details>
+</dd>
+</dl>
+<h3>Methods</h3>
+<dl>
+<dt id="taskue.Taskue.enqueue"><code class="name flex">
+<span>def <span class="ident">enqueue</span></span>(<span>self, work: Union[taskue.task.Task, Sequence[Sequence[taskue.task.Task]]], title: str = '') -> str</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Enqueue task or multiple tasks as a workflow</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>work</code></strong> :&ensp;<code>Union[Task, Sequence[Sequence[Task]]]</code></dt>
+<dd>task or list of lists of tasks.</dd>
+<dt><strong><code>title</code></strong> :&ensp;<code>str</code>, optional</dt>
+<dd>task / workflow title. Defaults to "".</dd>
+</dl>
+<h2 id="returns">Returns</h2>
+<dl>
+<dt><code>str</code></dt>
+<dd>task / workflow unique id</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def enqueue(self, work: Union[Task, Sequence[Sequence[Task]]], title: str = &#34;&#34;) -&gt; str:
+    &#34;&#34;&#34;Enqueue task or multiple tasks as a workflow
+
+    Args:
+        work (Union[Task, Sequence[Sequence[Task]]]): task or list of lists of tasks.
+        title (str, optional): task / workflow title. Defaults to &#34;&#34;.
+
+    Returns:
+        str: task / workflow unique id
+    &#34;&#34;&#34;
+    title = title or &#34;Untitled&#34;
+    if isinstance(work, Task):
+        return self._enqueue_task(work)
+
+    elif isinstance(work, list):
+        return self._enqueue_workflow(work, title)</code></pre>
+</details>
+</dd>
+<dt id="taskue.Taskue.namespace_delete"><code class="name flex">
+<span>def <span class="ident">namespace_delete</span></span>(<span>self, namespace: str)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Delete namespace</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>namespace</code></strong> :&ensp;<code>str</code></dt>
+<dd>namespace name</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def namespace_delete(self, namespace: str):
+    &#34;&#34;&#34;Delete namespace
+
+    Args:
+        namespace (str): namespace name
+    &#34;&#34;&#34;
+    self._ctrl.namespace_delete(namespace)</code></pre>
+</details>
+</dd>
+<dt id="taskue.Taskue.namespace_list"><code class="name flex">
+<span>def <span class="ident">namespace_list</span></span>(<span>self) -> Sequence[dict]</span>
+</code></dt>
+<dd>
+<div class="desc"><p>List namespaces</p>
+<h2 id="returns">Returns</h2>
+<dl>
+<dt><code>Sequence[dict]</code></dt>
+<dd>list of namespaces</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def namespace_list(self) -&gt; Sequence[dict]:
+    &#34;&#34;&#34;List namespaces
+
+    Returns:
+        Sequence[dict]: list of namespaces
+    &#34;&#34;&#34;
+    namespaces = self._ctrl.namespaces_list()
+    return list(namespaces)</code></pre>
+</details>
+</dd>
+<dt id="taskue.Taskue.runner_list"><code class="name flex">
+<span>def <span class="ident">runner_list</span></span>(<span>self) -> Sequence[dict]</span>
+</code></dt>
+<dd>
+<div class="desc"><p>List runners</p>
+<h2 id="returns">Returns</h2>
+<dl>
+<dt><code>Sequence[dict]</code></dt>
+<dd>list of runners</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def runner_list(self) -&gt; Sequence[dict]:
+    &#34;&#34;&#34;List runners
+
+    Returns:
+        Sequence[dict]: list of runners
+    &#34;&#34;&#34;
+    runners = self._ctrl.runners_list()
+    return list(runners)</code></pre>
+</details>
+</dd>
+<dt id="taskue.Taskue.task_delete"><code class="name flex">
+<span>def <span class="ident">task_delete</span></span>(<span>self, task_uid: str)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Delete task by its unique id</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>task_uid</code></strong> :&ensp;<code>str</code></dt>
+<dd>task unique id.</dd>
+</dl>
+<h2 id="raises">Raises</h2>
+<dl>
+<dt><code><a title="taskue.InvalidAction" href="#taskue.InvalidAction">InvalidAction</a></code></dt>
+<dd>raises if task is a part of a workflow or it is still running.</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def task_delete(self, task_uid: str):
+    &#34;&#34;&#34;Delete task by its unique id
+
+    Args:
+        task_uid (str): task unique id.
+    Raises:
+        InvalidAction: raises if task is a part of a workflow or it is still running.
+    &#34;&#34;&#34;
+    task = self.task_get(task_uid)
+    if task.workflow:
+        raise InvalidAction(&#34;Cannot delete task which is a part of workflow&#34;)
+    
+    elif not task.is_done:
+        raise InvalidAction(&#34;Cannot delete unfinished&#34;)
+
+    self._ctrl.task_delete(task_uid)</code></pre>
+</details>
+</dd>
+<dt id="taskue.Taskue.task_get"><code class="name flex">
+<span>def <span class="ident">task_get</span></span>(<span>self, task_uid: str) -> <a title="taskue.task.TaskResult" href="task.html#taskue.task.TaskResult">TaskResult</a></span>
+</code></dt>
+<dd>
+<div class="desc"><p>Get task result</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>task_uid</code></strong> :&ensp;<code>str</code></dt>
+<dd>task unique id.</dd>
+</dl>
+<h2 id="raises">Raises</h2>
+<dl>
+<dt><code><a title="taskue.NotFound" href="#taskue.NotFound">NotFound</a></code></dt>
+<dd>if task is not found.</dd>
+</dl>
+<h2 id="returns">Returns</h2>
+<dl>
+<dt><code>TaskResult</code></dt>
+<dd>task result</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def task_get(self, task_uid: str) -&gt; TaskResult:
+    &#34;&#34;&#34;Get task result
+
+    Args:
+        task_uid (str): task unique id.
+
+    Raises:
+        NotFound: if task is not found.
+
+    Returns:
+        TaskResult: task result
+    &#34;&#34;&#34;
+    task = self._ctrl.task_get(task_uid)
+    if not task:
+        raise NotFound(&#34;task %s not found&#34; % task_uid)
+    return TaskResult(task)</code></pre>
+</details>
+</dd>
+<dt id="taskue.Taskue.task_list"><code class="name flex">
+<span>def <span class="ident">task_list</span></span>(<span>self, page: int = 1, limit: int = 25) -> Iterator[<a title="taskue.task.TaskResult" href="task.html#taskue.task.TaskResult">TaskResult</a>]</span>
+</code></dt>
+<dd>
+<div class="desc"><p>List tasks</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>page</code></strong> :&ensp;<code>int</code>, optional</dt>
+<dd>page number. Defaults to 1.</dd>
+<dt><strong><code>limit</code></strong> :&ensp;<code>int</code>, optional</dt>
+<dd>number of results per page. Defaults to 25.</dd>
+</dl>
+<h2 id="yields">Yields</h2>
+<dl>
+<dt><code>TaskResult</code></dt>
+<dd>task result</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def task_list(self, page: int = 1, limit: int = 25) -&gt; Iterator[TaskResult]:
+    &#34;&#34;&#34;List tasks
+
+    Args:
+        page (int, optional): page number. Defaults to 1.
+        limit (int, optional): number of results per page. Defaults to 25.
+
+    Yields:
+        TaskResult: task result
+    &#34;&#34;&#34;
+    start = (page - 1) * limit
+    end = (page * limit) - 1
+    for task in self._ctrl.tasks_list(start, end):
+        yield TaskResult(task)</code></pre>
+</details>
+</dd>
+<dt id="taskue.Taskue.task_wait"><code class="name flex">
+<span>def <span class="ident">task_wait</span></span>(<span>self, task_uid: str, timeout: int = 60) -> <a title="taskue.task.TaskResult" href="task.html#taskue.task.TaskResult">TaskResult</a></span>
+</code></dt>
+<dd>
+<div class="desc"><p>Wait until the task finish</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>task_uid</code></strong> :&ensp;<code>str</code></dt>
+<dd>task unique id.</dd>
+<dt><strong><code>timeout</code></strong> :&ensp;<code>int</code>, optional</dt>
+<dd>timeout in seconds. Defaults to 60.</dd>
+</dl>
+<h2 id="raises">Raises</h2>
+<dl>
+<dt><code><a title="taskue.Timeout" href="#taskue.Timeout">Timeout</a></code></dt>
+<dd>if timeout is exceeded.</dd>
+</dl>
+<h2 id="returns">Returns</h2>
+<dl>
+<dt><code>TaskResult</code></dt>
+<dd>task result.</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def task_wait(self, task_uid: str, timeout: int = 60) -&gt; TaskResult:
+    &#34;&#34;&#34;Wait until the task finish
+
+    Args:
+        task_uid (str): task unique id.
+        timeout (int, optional): timeout in seconds. Defaults to 60.
+
+    Raises:
+        Timeout: if timeout is exceeded.
+
+    Returns:
+        TaskResult: task result.
+    &#34;&#34;&#34;
+    for _ in range(timeout):
+        task = self.task_get(task_uid)
+        if task.status in TASK_DONE_STATES:
+            return task
+        else:
+            time.sleep(1)
+    else:
+        raise Timeout(&#34;timeout exceeded&#34;)</code></pre>
+</details>
+</dd>
+<dt id="taskue.Taskue.workflow_delete"><code class="name flex">
+<span>def <span class="ident">workflow_delete</span></span>(<span>self, workflow_uid: str)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Delete workflow</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>workflow_uid</code></strong> :&ensp;<code>str</code></dt>
+<dd>workflow unique id.</dd>
+</dl>
+<h2 id="raises">Raises</h2>
+<dl>
+<dt><code><a title="taskue.InvalidAction" href="#taskue.InvalidAction">InvalidAction</a></code></dt>
+<dd>raises if workflow is not finished yet.</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def workflow_delete(self, workflow_uid: str):
+    &#34;&#34;&#34;Delete workflow
+
+    Args:
+        workflow_uid (str): workflow unique id.
+
+    Raises:
+        InvalidAction: raises if workflow is not finished yet.
+    &#34;&#34;&#34;
+    workflow = self.workflow_get(workflow_uid)
+    if not workflow.is_done:
+        raise InvalidAction(&#34;Cannot delete unfinished workflow&#34;)
+
+    self._ctrl.workflow_delete(workflow_uid)</code></pre>
+</details>
+</dd>
+<dt id="taskue.Taskue.workflow_get"><code class="name flex">
+<span>def <span class="ident">workflow_get</span></span>(<span>self, workflow_uid: str) -> <a title="taskue.workflow.WorkflowResult" href="workflow.html#taskue.workflow.WorkflowResult">WorkflowResult</a></span>
+</code></dt>
+<dd>
+<div class="desc"><p>Get workflow result</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>workflow_uid</code></strong> :&ensp;<code>str</code></dt>
+<dd>workflow unique id.</dd>
+</dl>
+<h2 id="raises">Raises</h2>
+<dl>
+<dt><code><a title="taskue.NotFound" href="#taskue.NotFound">NotFound</a></code></dt>
+<dd>raises if workflow is not found.</dd>
+</dl>
+<h2 id="returns">Returns</h2>
+<dl>
+<dt><code>WorkflowResult</code></dt>
+<dd>workflow result.</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def workflow_get(self, workflow_uid: str) -&gt; WorkflowResult:
+    &#34;&#34;&#34;Get workflow result
+
+    Args:
+        workflow_uid (str): workflow unique id.
+
+    Raises:
+        NotFound: raises if workflow is not found.
+
+    Returns:
+        WorkflowResult: workflow result.
+    &#34;&#34;&#34;
+    workflow = self._ctrl.workflow_get(workflow_uid)
+    if not workflow:
+        raise NotFound(&#34;workflow %s not found&#34; % workflow_uid)
+    return WorkflowResult(workflow)</code></pre>
+</details>
+</dd>
+<dt id="taskue.Taskue.workflow_list"><code class="name flex">
+<span>def <span class="ident">workflow_list</span></span>(<span>self, page: int = 1, limit: int = 25) -> Iterator[<a title="taskue.workflow.WorkflowResult" href="workflow.html#taskue.workflow.WorkflowResult">WorkflowResult</a>]</span>
+</code></dt>
+<dd>
+<div class="desc"><p>List workflows</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>page</code></strong> :&ensp;<code>int</code>, optional</dt>
+<dd>page number. Defaults to 1.</dd>
+<dt><strong><code>limit</code></strong> :&ensp;<code>int</code>, optional</dt>
+<dd>number of results per page. Defaults to 25.</dd>
+</dl>
+<h2 id="yields">Yields</h2>
+<dl>
+<dt><code>WorkflowResult</code></dt>
+<dd>workflow result</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def workflow_list(self, page: int = 1, limit: int = 25) -&gt; Iterator[WorkflowResult]:
+    &#34;&#34;&#34;List workflows
+
+    Args:
+        page (int, optional): page number. Defaults to 1.
+        limit (int, optional): number of results per page. Defaults to 25.
+
+    Yields:
+        WorkflowResult: workflow result
+    &#34;&#34;&#34;
+    start = (page - 1) * limit
+    end = (page * limit) - 1
+    for workflow in self._ctrl.workflows_list(start, end):
+        yield WorkflowResult(workflow)</code></pre>
+</details>
+</dd>
+<dt id="taskue.Taskue.workflow_wait"><code class="name flex">
+<span>def <span class="ident">workflow_wait</span></span>(<span>self, workflow_uid: str, timeout: int = 60) -> <a title="taskue.workflow.WorkflowResult" href="workflow.html#taskue.workflow.WorkflowResult">WorkflowResult</a></span>
+</code></dt>
+<dd>
+<div class="desc"><p>Wait until workflow finish</p>
+<h2 id="args">Args</h2>
+<dl>
+<dt><strong><code>workflow_uid</code></strong> :&ensp;<code>str</code></dt>
+<dd>workflow unique id.</dd>
+<dt><strong><code>timeout</code></strong> :&ensp;<code>int</code>, optional</dt>
+<dd>timeout in seconds. Defaults to 60.</dd>
+</dl>
+<h2 id="raises">Raises</h2>
+<dl>
+<dt><code><a title="taskue.Timeout" href="#taskue.Timeout">Timeout</a></code></dt>
+<dd>raises if timeout is exceeded</dd>
+</dl>
+<h2 id="returns">Returns</h2>
+<dl>
+<dt><code>WorkflowResult</code></dt>
+<dd>workflow result</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def workflow_wait(self, workflow_uid: str, timeout: int = 60) -&gt; WorkflowResult:
+    &#34;&#34;&#34;Wait until workflow finish
+
+    Args:
+        workflow_uid (str): workflow unique id.
+        timeout (int, optional): timeout in seconds. Defaults to 60.
+
+    Raises:
+        Timeout: raises if timeout is exceeded
+
+    Returns:
+        WorkflowResult: workflow result
+    &#34;&#34;&#34;
+    for _ in range(timeout):
+        workflow = self.workflow_get(workflow_uid)
+        if workflow.status in WORKFLOW_DONE_STATES:
+            return workflow
+        else:
+            time.sleep(1)
+    else:
+        raise Timeout(&#34;timeout exceeded&#34;)</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+<dt id="taskue.Timeout"><code class="flex name class">
+<span>class <span class="ident">Timeout</span></span>
+<span>(</span><span>...)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Common base class for all non-exit exceptions.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Timeout(Exception):
+    pass</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>builtins.Exception</li>
+<li>builtins.BaseException</li>
+</ul>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<h1>Index</h1>
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3><a href="#header-submodules">Sub-modules</a></h3>
+<ul>
+<li><code><a title="taskue.controller" href="controller.html">taskue.controller</a></code></li>
+<li><code><a title="taskue.runner" href="runner.html">taskue.runner</a></code></li>
+<li><code><a title="taskue.task" href="task.html">taskue.task</a></code></li>
+<li><code><a title="taskue.workflow" href="workflow.html">taskue.workflow</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="taskue.InvalidAction" href="#taskue.InvalidAction">InvalidAction</a></code></h4>
+</li>
+<li>
+<h4><code><a title="taskue.NotFound" href="#taskue.NotFound">NotFound</a></code></h4>
+</li>
+<li>
+<h4><code><a title="taskue.Taskue" href="#taskue.Taskue">Taskue</a></code></h4>
+<ul class="two-column">
+<li><code><a title="taskue.Taskue.enqueue" href="#taskue.Taskue.enqueue">enqueue</a></code></li>
+<li><code><a title="taskue.Taskue.namespace" href="#taskue.Taskue.namespace">namespace</a></code></li>
+<li><code><a title="taskue.Taskue.namespace_delete" href="#taskue.Taskue.namespace_delete">namespace_delete</a></code></li>
+<li><code><a title="taskue.Taskue.namespace_list" href="#taskue.Taskue.namespace_list">namespace_list</a></code></li>
+<li><code><a title="taskue.Taskue.runner_list" href="#taskue.Taskue.runner_list">runner_list</a></code></li>
+<li><code><a title="taskue.Taskue.task_delete" href="#taskue.Taskue.task_delete">task_delete</a></code></li>
+<li><code><a title="taskue.Taskue.task_get" href="#taskue.Taskue.task_get">task_get</a></code></li>
+<li><code><a title="taskue.Taskue.task_list" href="#taskue.Taskue.task_list">task_list</a></code></li>
+<li><code><a title="taskue.Taskue.task_wait" href="#taskue.Taskue.task_wait">task_wait</a></code></li>
+<li><code><a title="taskue.Taskue.workflow_delete" href="#taskue.Taskue.workflow_delete">workflow_delete</a></code></li>
+<li><code><a title="taskue.Taskue.workflow_get" href="#taskue.Taskue.workflow_get">workflow_get</a></code></li>
+<li><code><a title="taskue.Taskue.workflow_list" href="#taskue.Taskue.workflow_list">workflow_list</a></code></li>
+<li><code><a title="taskue.Taskue.workflow_wait" href="#taskue.Taskue.workflow_wait">workflow_wait</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="taskue.Timeout" href="#taskue.Timeout">Timeout</a></code></h4>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.8.1</a>.</p>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+<script>hljs.initHighlightingOnLoad()</script>
+</body>
+</html>

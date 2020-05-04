@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+<meta name="generator" content="pdoc 0.8.1" />
+<title>taskue.runner API documentation</title>
+<meta name="description" content="" />
+<link href='https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.0/normalize.min.css' rel='stylesheet'>
+<link href='https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/8.0.0/sanitize.min.css' rel='stylesheet'>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css" rel="stylesheet">
+<style>.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:30px;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:1em 0 .50em 0}h3{font-size:1.4em;margin:25px 0 10px 0}h4{margin:0;font-size:105%}a{color:#058;text-decoration:none;transition:color .3s ease-in-out}a:hover{color:#e82}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900}pre code{background:#f8f8f8;font-size:.8em;line-height:1.4em}code{background:#f2f2f1;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{background:#f8f8f8;border:0;border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0;padding:1ex}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-weight:bold;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}.admonition{padding:.1em .5em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.item .name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul{padding-left:1.5em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>taskue.runner</code></h1>
+</header>
+<section id="section-intro">
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">import importlib
+import inspect
+import os
+import pickle
+import signal
+import sys
+import time
+import traceback
+from uuid import uuid4
+from gevent import with_timeout, Timeout
+import gevent
+import redis
+from taskue import logger
+from taskue.controller import RedisController
+from taskue.task import TaskStatus, _Task
+
+HEARTBEAT_TIMEOUT = 10
+HEARTBEAT_MAX_DELAY = 5
+
+
+class RunnerStatus:
+    IDEL = &#34;idel&#34;
+    BUSY = &#34;busy&#34;
+    STOPPED = &#34;stopped&#34;
+    STOPPING = &#34;stopping&#34;
+    DEAD = &#34;dead&#34;
+
+
+class Loader:
+    def __init__(self, task):
+        self.task = task
+
+    def __enter__(self):
+        name, path = self.task.workload_info[&#34;module_name&#34;], self.task.workload_info[&#34;module_path&#34;]
+        if name not in sys.modules:
+            if os.path.exists(path):
+                spec = importlib.util.spec_from_file_location(name, path)
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[spec.name] = module
+                spec.loader.exec_module(module)
+            else:
+                raise ModuleNotFoundError(f&#34;module {path} is not found&#34;)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        del sys.modules[self.task.workload_info[&#34;module_name&#34;]]
+
+
+class TaskueRunner:
+    def __init__(
+        self,
+        redis_conn: redis.Redis,
+        name: str = None,
+        namespace: str = &#34;default&#34;,
+        queues: list = None,
+        timeout: int = 3600,
+        run_untagged_tasks: bool = False,
+        auto_load_modules: bool = False,
+    ):
+        self.name = name or uuid4().hex[:10]
+        self.namespace = namespace
+        self.queues = queues or []
+        self.timeout = timeout
+        self.run_untagged_tasks = run_untagged_tasks
+        self.auto_load_modules = auto_load_modules
+        self._stop = False
+        self._queues = []
+        self._ctrl = RedisController(redis_conn, namespace)
+
+    def _register(self):
+        &#34;&#34;&#34;Register runner
+        &#34;&#34;&#34;
+        self._ctrl.runner_register(
+            name=self.name, namespace=self.namespace, status=RunnerStatus.IDEL, queues=self.queues, timeout=self.timeout
+        )
+
+    def _monitor_runners(self):
+        &#34;&#34;&#34;Monitor other runners and reschedule dead runners&#39;s tasks
+        &#34;&#34;&#34;
+        # skip if monitoring job is done by another runner in the last 30 seconds
+        if not self._ctrl.acquire_monitoring_task(self.name, timeout=30):
+            return
+
+        for runner in self._ctrl.runners_list():
+            # skip current runner, healthy and none active runners
+            if (
+                self._ctrl.is_runner_healthy(runner[&#34;name&#34;])
+                or runner[&#34;name&#34;] == self.name
+                or runner[&#34;status&#34;] in [RunnerStatus.DEAD, RunnerStatus.STOPPED]
+            ):
+                continue
+
+            with self._ctrl.pipeline() as pipeline:
+                # change runner status to dead
+                logger.warning(&#34;Runner {} is dead&#34;, runner[&#34;name&#34;])
+                self._ctrl.runner_update(runner[&#34;name&#34;], pipeline=pipeline, status=RunnerStatus.DEAD)
+
+                # if the runner is busy then reschedule its task if rescheduling is enabled
+                if runner[&#34;status&#34;] == RunnerStatus.BUSY:
+                    task = self._ctrl.task_get(runner[&#34;task&#34;])
+                    if task.allow_rescheduling:
+                        logger.info(&#34;Re-scheduling task {}&#34;, runner[&#34;task&#34;])
+                        task.reschedule(self._ctrl, pipeline=pipeline)
+                    else:
+                        logger.info(&#34;Terminate task {}&#34;, runner[&#34;task&#34;])
+                        task.terminate(self._ctrl, pipeline=pipeline)
+
+                    # if the task is part of a workflow, update the workflow
+                    if task.workflow:
+                        workflow = self._ctrl.workflow_get(task.workflow)
+                        workflow.update_task(task)
+                        workflow.update(self._ctrl, pipeline=pipeline)
+
+                pipeline.execute()
+
+    def _send_heartbeat(self, timeout=None):
+        &#34;&#34;&#34;Send heartbeat with timeout
+        &#34;&#34;&#34;
+        logger.debug(&#34;Sending heartbeat&#34;)
+        timeout = (timeout or HEARTBEAT_TIMEOUT) + HEARTBEAT_MAX_DELAY
+        self._ctrl.heartbeat_send(self.name, timeout)
+
+    def _update(self, pipeline=None, **kwargs):
+        &#34;&#34;&#34;update runner info
+        &#34;&#34;&#34;
+        self._ctrl.runner_update(self.name, pipeline, **kwargs)
+
+    def _die_if_marked_as_dead(self):
+        if self._ctrl.runner_status_get(self.name) == RunnerStatus.DEAD:
+            logger.critical(&#34;Marked as dead, shutting down&#34;)
+            sys.exit(1)
+
+    def _execute_task(self, task):
+        func, args, kwargs = task.workload
+        timeout = task.timeout or self.timeout
+
+        for attempt in range(max(task.retries, 1)):
+            # send heartbeat with timeout of the task
+            self._send_heartbeat(timeout=timeout)
+            try:
+                if timeout:
+                    task.result = with_timeout(timeout, func, *args, **kwargs)
+                else:
+                    task.result = func(*args, **kwargs)
+
+                task.status = TaskStatus.PASSED
+            except Exception as e:
+                if attempt &lt; task.retries - 1:
+                    continue
+                else:
+                    raise
+            finally:
+                task.attempts += 1
+                signal.alarm(0)
+
+    def _start(self):
+        while True:
+            # exit if the runner marked as dead by other runners
+            self._die_if_marked_as_dead()
+
+            # exit if recived stop signal
+            if self._stop:
+                self._update(status=RunnerStatus.STOPPED)
+                sys.exit()
+
+            # send heartbeat
+            self._send_heartbeat()
+
+            # monitor other runners
+            self._monitor_runners()
+
+            # wait for new workflows or tasks
+            queue, uid = self._ctrl.blpop(self._queues, timeout=3)
+            if not (queue and uid):
+                continue
+
+            if queue == self._ctrl.keys.new_workflows:
+                logger.info(&#34;Starting workflow (UID: {})&#34;, uid)
+                workflow = self._ctrl.workflow_get(uid)
+                workflow.start(self._ctrl)
+            else:
+                logger.info(&#34;Executing task (UID: {})&#34;, uid)
+                task = self._ctrl.task_get(uid)
+                task.runner = self.name
+                task.status = TaskStatus.RUNNING
+                task.started_at = time.time()
+
+                with self._ctrl.pipeline() as pipeline:
+                    # update task status to running
+                    task.save(self._ctrl, pipeline=pipeline)
+                    # update runner status to busy and set its task to the task uid
+                    self._update(pipeline=pipeline, status=RunnerStatus.BUSY, task=task.uid)
+                    pipeline.execute()
+
+                try:
+                    # load task module if auto loading is enabled
+                    if self.auto_load_modules:
+                        with Loader(task):
+                            self._execute_task(task)
+                    else:
+                        self._execute_task(task)
+
+                except (pickle.UnpicklingError, ModuleNotFoundError):
+                    task.status = TaskStatus.ERRORED
+                    task.result = traceback.format_exc()
+
+                except Timeout:
+                    task.status = TaskStatus.TIMEDOUT
+
+                except Exception:
+                    task.status = TaskStatus.FAILED
+                    task.result = traceback.format_exc()
+
+                finally:
+                    task.executed_at = time.time()
+
+                # exit without saving task if marked as dead
+                self._die_if_marked_as_dead()
+
+                with self._ctrl.pipeline() as pipeline:
+                    # save task result
+                    task.save(self._ctrl, pipeline=pipeline)
+                    # if task is part of workflow, update workflow
+                    if task.workflow:
+                        # acquire lock for this workflow to prevent race conditions
+                        with self._ctrl.lock(task.workflow):
+                            workflow = self._ctrl.workflow_get(task.workflow)
+                            workflow.update_task(task)
+                            workflow.update(self._ctrl, pipeline=pipeline)
+                    # set runner status to idle
+                    self._update(pipeline, status=RunnerStatus.IDEL, task=0)
+                    pipeline.execute()
+
+    def start(self):
+        &#34;&#34;&#34; Start the runner &#34;&#34;&#34;
+        # register signals handler
+        for signal_type in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(signal_type, self.stop)
+
+        if not (self.run_untagged_tasks or self.queues):
+            raise ValueError(&#34;Queues can not be empty when runner is not allowed to run untagged tasks&#34;)
+
+        if self.run_untagged_tasks:
+            self._queues.append(self._ctrl.keys.task_queue % &#34;default&#34;)
+
+        for queue in self.queues:
+            self._queues.append(self._ctrl.keys.task_queue % queue)
+
+        # add new workflows queue
+        self._queues.append(self._ctrl.keys.new_workflows)
+
+        # send heartbeat
+        self._send_heartbeat()
+
+        # register runner to the system
+        self._register()
+
+        # start work loop
+        logger.info(&#34;Taskue runner (name: {}) is started&#34;, self.name)
+        self._start()
+
+    def stop(self):
+        &#34;&#34;&#34; Stop the runner gracefully &#34;&#34;&#34;
+        logger.info(&#34;Shutting down gracefully, please wait ...&#34;)
+        self._update(status=RunnerStatus.STOPPING)
+        self._stop = True
+
+
+if __name__ == &#34;__main__&#34;:
+    from redis import Redis
+
+    runner = TaskueRunner(Redis())
+    runner.start()</code></pre>
+</details>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="taskue.runner.Loader"><code class="flex name class">
+<span>class <span class="ident">Loader</span></span>
+<span>(</span><span>task)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Loader:
+    def __init__(self, task):
+        self.task = task
+
+    def __enter__(self):
+        name, path = self.task.workload_info[&#34;module_name&#34;], self.task.workload_info[&#34;module_path&#34;]
+        if name not in sys.modules:
+            if os.path.exists(path):
+                spec = importlib.util.spec_from_file_location(name, path)
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[spec.name] = module
+                spec.loader.exec_module(module)
+            else:
+                raise ModuleNotFoundError(f&#34;module {path} is not found&#34;)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        del sys.modules[self.task.workload_info[&#34;module_name&#34;]]</code></pre>
+</details>
+</dd>
+<dt id="taskue.runner.RunnerStatus"><code class="flex name class">
+<span>class <span class="ident">RunnerStatus</span></span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class RunnerStatus:
+    IDEL = &#34;idel&#34;
+    BUSY = &#34;busy&#34;
+    STOPPED = &#34;stopped&#34;
+    STOPPING = &#34;stopping&#34;
+    DEAD = &#34;dead&#34;</code></pre>
+</details>
+<h3>Class variables</h3>
+<dl>
+<dt id="taskue.runner.RunnerStatus.BUSY"><code class="name">var <span class="ident">BUSY</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.runner.RunnerStatus.DEAD"><code class="name">var <span class="ident">DEAD</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.runner.RunnerStatus.IDEL"><code class="name">var <span class="ident">IDEL</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.runner.RunnerStatus.STOPPED"><code class="name">var <span class="ident">STOPPED</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.runner.RunnerStatus.STOPPING"><code class="name">var <span class="ident">STOPPING</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+<dt id="taskue.runner.TaskueRunner"><code class="flex name class">
+<span>class <span class="ident">TaskueRunner</span></span>
+<span>(</span><span>redis_conn: redis.client.Redis, name: str = None, namespace: str = 'default', queues: list = None, timeout: int = 3600, run_untagged_tasks: bool = False, auto_load_modules: bool = False)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class TaskueRunner:
+    def __init__(
+        self,
+        redis_conn: redis.Redis,
+        name: str = None,
+        namespace: str = &#34;default&#34;,
+        queues: list = None,
+        timeout: int = 3600,
+        run_untagged_tasks: bool = False,
+        auto_load_modules: bool = False,
+    ):
+        self.name = name or uuid4().hex[:10]
+        self.namespace = namespace
+        self.queues = queues or []
+        self.timeout = timeout
+        self.run_untagged_tasks = run_untagged_tasks
+        self.auto_load_modules = auto_load_modules
+        self._stop = False
+        self._queues = []
+        self._ctrl = RedisController(redis_conn, namespace)
+
+    def _register(self):
+        &#34;&#34;&#34;Register runner
+        &#34;&#34;&#34;
+        self._ctrl.runner_register(
+            name=self.name, namespace=self.namespace, status=RunnerStatus.IDEL, queues=self.queues, timeout=self.timeout
+        )
+
+    def _monitor_runners(self):
+        &#34;&#34;&#34;Monitor other runners and reschedule dead runners&#39;s tasks
+        &#34;&#34;&#34;
+        # skip if monitoring job is done by another runner in the last 30 seconds
+        if not self._ctrl.acquire_monitoring_task(self.name, timeout=30):
+            return
+
+        for runner in self._ctrl.runners_list():
+            # skip current runner, healthy and none active runners
+            if (
+                self._ctrl.is_runner_healthy(runner[&#34;name&#34;])
+                or runner[&#34;name&#34;] == self.name
+                or runner[&#34;status&#34;] in [RunnerStatus.DEAD, RunnerStatus.STOPPED]
+            ):
+                continue
+
+            with self._ctrl.pipeline() as pipeline:
+                # change runner status to dead
+                logger.warning(&#34;Runner {} is dead&#34;, runner[&#34;name&#34;])
+                self._ctrl.runner_update(runner[&#34;name&#34;], pipeline=pipeline, status=RunnerStatus.DEAD)
+
+                # if the runner is busy then reschedule its task if rescheduling is enabled
+                if runner[&#34;status&#34;] == RunnerStatus.BUSY:
+                    task = self._ctrl.task_get(runner[&#34;task&#34;])
+                    if task.allow_rescheduling:
+                        logger.info(&#34;Re-scheduling task {}&#34;, runner[&#34;task&#34;])
+                        task.reschedule(self._ctrl, pipeline=pipeline)
+                    else:
+                        logger.info(&#34;Terminate task {}&#34;, runner[&#34;task&#34;])
+                        task.terminate(self._ctrl, pipeline=pipeline)
+
+                    # if the task is part of a workflow, update the workflow
+                    if task.workflow:
+                        workflow = self._ctrl.workflow_get(task.workflow)
+                        workflow.update_task(task)
+                        workflow.update(self._ctrl, pipeline=pipeline)
+
+                pipeline.execute()
+
+    def _send_heartbeat(self, timeout=None):
+        &#34;&#34;&#34;Send heartbeat with timeout
+        &#34;&#34;&#34;
+        logger.debug(&#34;Sending heartbeat&#34;)
+        timeout = (timeout or HEARTBEAT_TIMEOUT) + HEARTBEAT_MAX_DELAY
+        self._ctrl.heartbeat_send(self.name, timeout)
+
+    def _update(self, pipeline=None, **kwargs):
+        &#34;&#34;&#34;update runner info
+        &#34;&#34;&#34;
+        self._ctrl.runner_update(self.name, pipeline, **kwargs)
+
+    def _die_if_marked_as_dead(self):
+        if self._ctrl.runner_status_get(self.name) == RunnerStatus.DEAD:
+            logger.critical(&#34;Marked as dead, shutting down&#34;)
+            sys.exit(1)
+
+    def _execute_task(self, task):
+        func, args, kwargs = task.workload
+        timeout = task.timeout or self.timeout
+
+        for attempt in range(max(task.retries, 1)):
+            # send heartbeat with timeout of the task
+            self._send_heartbeat(timeout=timeout)
+            try:
+                if timeout:
+                    task.result = with_timeout(timeout, func, *args, **kwargs)
+                else:
+                    task.result = func(*args, **kwargs)
+
+                task.status = TaskStatus.PASSED
+            except Exception as e:
+                if attempt &lt; task.retries - 1:
+                    continue
+                else:
+                    raise
+            finally:
+                task.attempts += 1
+                signal.alarm(0)
+
+    def _start(self):
+        while True:
+            # exit if the runner marked as dead by other runners
+            self._die_if_marked_as_dead()
+
+            # exit if recived stop signal
+            if self._stop:
+                self._update(status=RunnerStatus.STOPPED)
+                sys.exit()
+
+            # send heartbeat
+            self._send_heartbeat()
+
+            # monitor other runners
+            self._monitor_runners()
+
+            # wait for new workflows or tasks
+            queue, uid = self._ctrl.blpop(self._queues, timeout=3)
+            if not (queue and uid):
+                continue
+
+            if queue == self._ctrl.keys.new_workflows:
+                logger.info(&#34;Starting workflow (UID: {})&#34;, uid)
+                workflow = self._ctrl.workflow_get(uid)
+                workflow.start(self._ctrl)
+            else:
+                logger.info(&#34;Executing task (UID: {})&#34;, uid)
+                task = self._ctrl.task_get(uid)
+                task.runner = self.name
+                task.status = TaskStatus.RUNNING
+                task.started_at = time.time()
+
+                with self._ctrl.pipeline() as pipeline:
+                    # update task status to running
+                    task.save(self._ctrl, pipeline=pipeline)
+                    # update runner status to busy and set its task to the task uid
+                    self._update(pipeline=pipeline, status=RunnerStatus.BUSY, task=task.uid)
+                    pipeline.execute()
+
+                try:
+                    # load task module if auto loading is enabled
+                    if self.auto_load_modules:
+                        with Loader(task):
+                            self._execute_task(task)
+                    else:
+                        self._execute_task(task)
+
+                except (pickle.UnpicklingError, ModuleNotFoundError):
+                    task.status = TaskStatus.ERRORED
+                    task.result = traceback.format_exc()
+
+                except Timeout:
+                    task.status = TaskStatus.TIMEDOUT
+
+                except Exception:
+                    task.status = TaskStatus.FAILED
+                    task.result = traceback.format_exc()
+
+                finally:
+                    task.executed_at = time.time()
+
+                # exit without saving task if marked as dead
+                self._die_if_marked_as_dead()
+
+                with self._ctrl.pipeline() as pipeline:
+                    # save task result
+                    task.save(self._ctrl, pipeline=pipeline)
+                    # if task is part of workflow, update workflow
+                    if task.workflow:
+                        # acquire lock for this workflow to prevent race conditions
+                        with self._ctrl.lock(task.workflow):
+                            workflow = self._ctrl.workflow_get(task.workflow)
+                            workflow.update_task(task)
+                            workflow.update(self._ctrl, pipeline=pipeline)
+                    # set runner status to idle
+                    self._update(pipeline, status=RunnerStatus.IDEL, task=0)
+                    pipeline.execute()
+
+    def start(self):
+        &#34;&#34;&#34; Start the runner &#34;&#34;&#34;
+        # register signals handler
+        for signal_type in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(signal_type, self.stop)
+
+        if not (self.run_untagged_tasks or self.queues):
+            raise ValueError(&#34;Queues can not be empty when runner is not allowed to run untagged tasks&#34;)
+
+        if self.run_untagged_tasks:
+            self._queues.append(self._ctrl.keys.task_queue % &#34;default&#34;)
+
+        for queue in self.queues:
+            self._queues.append(self._ctrl.keys.task_queue % queue)
+
+        # add new workflows queue
+        self._queues.append(self._ctrl.keys.new_workflows)
+
+        # send heartbeat
+        self._send_heartbeat()
+
+        # register runner to the system
+        self._register()
+
+        # start work loop
+        logger.info(&#34;Taskue runner (name: {}) is started&#34;, self.name)
+        self._start()
+
+    def stop(self):
+        &#34;&#34;&#34; Stop the runner gracefully &#34;&#34;&#34;
+        logger.info(&#34;Shutting down gracefully, please wait ...&#34;)
+        self._update(status=RunnerStatus.STOPPING)
+        self._stop = True</code></pre>
+</details>
+<h3>Methods</h3>
+<dl>
+<dt id="taskue.runner.TaskueRunner.start"><code class="name flex">
+<span>def <span class="ident">start</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Start the runner</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def start(self):
+    &#34;&#34;&#34; Start the runner &#34;&#34;&#34;
+    # register signals handler
+    for signal_type in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(signal_type, self.stop)
+
+    if not (self.run_untagged_tasks or self.queues):
+        raise ValueError(&#34;Queues can not be empty when runner is not allowed to run untagged tasks&#34;)
+
+    if self.run_untagged_tasks:
+        self._queues.append(self._ctrl.keys.task_queue % &#34;default&#34;)
+
+    for queue in self.queues:
+        self._queues.append(self._ctrl.keys.task_queue % queue)
+
+    # add new workflows queue
+    self._queues.append(self._ctrl.keys.new_workflows)
+
+    # send heartbeat
+    self._send_heartbeat()
+
+    # register runner to the system
+    self._register()
+
+    # start work loop
+    logger.info(&#34;Taskue runner (name: {}) is started&#34;, self.name)
+    self._start()</code></pre>
+</details>
+</dd>
+<dt id="taskue.runner.TaskueRunner.stop"><code class="name flex">
+<span>def <span class="ident">stop</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Stop the runner gracefully</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def stop(self):
+    &#34;&#34;&#34; Stop the runner gracefully &#34;&#34;&#34;
+    logger.info(&#34;Shutting down gracefully, please wait ...&#34;)
+    self._update(status=RunnerStatus.STOPPING)
+    self._stop = True</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<h1>Index</h1>
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="taskue" href="index.html">taskue</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="taskue.runner.Loader" href="#taskue.runner.Loader">Loader</a></code></h4>
+</li>
+<li>
+<h4><code><a title="taskue.runner.RunnerStatus" href="#taskue.runner.RunnerStatus">RunnerStatus</a></code></h4>
+<ul class="">
+<li><code><a title="taskue.runner.RunnerStatus.BUSY" href="#taskue.runner.RunnerStatus.BUSY">BUSY</a></code></li>
+<li><code><a title="taskue.runner.RunnerStatus.DEAD" href="#taskue.runner.RunnerStatus.DEAD">DEAD</a></code></li>
+<li><code><a title="taskue.runner.RunnerStatus.IDEL" href="#taskue.runner.RunnerStatus.IDEL">IDEL</a></code></li>
+<li><code><a title="taskue.runner.RunnerStatus.STOPPED" href="#taskue.runner.RunnerStatus.STOPPED">STOPPED</a></code></li>
+<li><code><a title="taskue.runner.RunnerStatus.STOPPING" href="#taskue.runner.RunnerStatus.STOPPING">STOPPING</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="taskue.runner.TaskueRunner" href="#taskue.runner.TaskueRunner">TaskueRunner</a></code></h4>
+<ul class="">
+<li><code><a title="taskue.runner.TaskueRunner.start" href="#taskue.runner.TaskueRunner.start">start</a></code></li>
+<li><code><a title="taskue.runner.TaskueRunner.stop" href="#taskue.runner.TaskueRunner.stop">stop</a></code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.8.1</a>.</p>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+<script>hljs.initHighlightingOnLoad()</script>
+</body>
+</html>

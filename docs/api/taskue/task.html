@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+<meta name="generator" content="pdoc 0.8.1" />
+<title>taskue.task API documentation</title>
+<meta name="description" content="" />
+<link href='https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.0/normalize.min.css' rel='stylesheet'>
+<link href='https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/8.0.0/sanitize.min.css' rel='stylesheet'>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css" rel="stylesheet">
+<style>.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:30px;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:1em 0 .50em 0}h3{font-size:1.4em;margin:25px 0 10px 0}h4{margin:0;font-size:105%}a{color:#058;text-decoration:none;transition:color .3s ease-in-out}a:hover{color:#e82}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900}pre code{background:#f8f8f8;font-size:.8em;line-height:1.4em}code{background:#f2f2f1;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{background:#f8f8f8;border:0;border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0;padding:1ex}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-weight:bold;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}.admonition{padding:.1em .5em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.item .name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul{padding-left:1.5em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>taskue.task</code></h1>
+</header>
+<section id="section-intro">
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">import inspect
+import os
+import pickle
+import time
+import uuid
+import json
+import inspect
+from enum import Enum
+
+__all__ = (&#34;Task&#34;, &#34;TaskStatus&#34;, &#34;TaskSummary&#34;, &#34;TaskResult&#34;, &#34;Conditions&#34;)
+
+
+class Conditions(str, Enum):
+    &#34;&#34;&#34; Task execution conditions &#34;&#34;&#34;
+
+    ALWAYS = &#34;always&#34;
+    ON_SUCCESS = &#34;on_success&#34;
+    ON_FAILURE = &#34;on_failure&#34;
+
+
+class TaskStatus(str, Enum):
+    &#34;&#34;&#34; Task states &#34;&#34;&#34;
+
+    CREATED = &#34;created&#34;
+    PENDING = &#34;pending&#34;
+    RUNNING = &#34;running&#34;
+    PASSED = &#34;passed&#34;
+    FAILED = &#34;failed&#34;
+    TERMINATED = &#34;terminated&#34;
+    ERRORED = &#34;errored&#34;
+    SKIPPED = &#34;skipped&#34;
+    TIMEDOUT = &#34;timedout&#34;
+
+
+TASK_DONE_STATES = [
+    TaskStatus.PASSED,
+    TaskStatus.FAILED,
+    TaskStatus.ERRORED,
+    TaskStatus.TIMEDOUT,
+    TaskStatus.SKIPPED,
+    TaskStatus.TERMINATED,
+]
+
+
+class Base:
+    &#34;&#34;&#34; Base task class &#34;&#34;&#34;
+
+    def __init__(self, *args, **kwargs):
+        self._uid = kwargs.get(&#34;_uid&#34;, None)
+        self._tid = kwargs.get(&#34;_tid&#34;, 0)
+        self._title = kwargs.get(&#34;_title&#34;, &#34;Untitled Task&#34;)
+        self._retries = kwargs.get(&#34;_retries&#34;, 1)
+        self._tag = kwargs.get(&#34;_tag&#34;, None)
+        self._when = kwargs.get(&#34;_when&#34;, Conditions.ALWAYS)
+        self._timeout = kwargs.get(&#34;_timeout&#34;, 3600)
+        self._allow_failure = kwargs.get(&#34;_allow_failure&#34;, False)
+        self._allow_rescheduling = kwargs.get(&#34;_allow_rescheduling&#34;, True)
+        self._stage = kwargs.get(&#34;_stage&#34;, 1)
+        self._workload = kwargs.get(&#34;_workload&#34;, None)
+        self._workload_info = kwargs.get(&#34;_workload_info&#34;, dict())
+        self._attempts = kwargs.get(&#34;_attempts&#34;, 0)
+        self._rescheduleded = kwargs.get(&#34;_rescheduleded&#34;, 0)
+        self._result = kwargs.get(&#34;_result&#34;, None)
+        self._runner = kwargs.get(&#34;_runner&#34;, None)
+        self._workflow = kwargs.get(&#34;_workflow&#34;, None)
+        self._status = kwargs.get(&#34;_status&#34;, None)
+        self._created_at = kwargs.get(&#34;_created_at&#34;, None)
+        self._queued_at = kwargs.get(&#34;_queued_at&#34;, None)
+        self._started_at = kwargs.get(&#34;_started_at&#34;, None)
+        self._skipped_at = kwargs.get(&#34;_skipped_at&#34;, None)
+        self._terminated_at = kwargs.get(&#34;_terminated_at&#34;, None)
+        self._executed_at = kwargs.get(&#34;_executed_at&#34;, None)
+
+    @property
+    def json(self):
+        ddict = self.__dict__.copy()
+        ddict.pop(&#34;_workload&#34;)
+        return ddict
+
+    @property
+    def uid(self):
+        return self._uid
+
+    @property
+    def title(self):
+        return self._title
+
+    @property
+    def retries(self):
+        return self._retries
+
+    @property
+    def tag(self):
+        return self._tag
+
+    @property
+    def when(self):
+        return self._when
+
+    @property
+    def timeout(self):
+        return self._timeout
+
+    @property
+    def allow_failure(self):
+        return self._allow_failure
+
+    @property
+    def allow_rescheduling(self):
+        return self._allow_rescheduling
+
+    @property
+    def attempts(self):
+        return self._attempts
+
+    @property
+    def stage(self):
+        return self._stage
+
+    @property
+    def workload(self):
+        if self._workload is not None:
+            return pickle.loads(self._workload)
+
+    @property
+    def rescheduleded(self):
+        return self._rescheduleded
+
+    @property
+    def result(self):
+        return self._result
+
+    @property
+    def runner(self):
+        return self._runner
+
+    @property
+    def workflow(self):
+        return self._workflow
+
+    @property
+    def status(self):
+        return self._status
+
+    @property
+    def created_at(self):
+        return self._created_at
+
+    @property
+    def queued_at(self):
+        return self._queued_at
+
+    @property
+    def started_at(self):
+        return self._started_at
+
+    @property
+    def skipped_at(self):
+        return self._skipped_at
+
+    @property
+    def terminated_at(self):
+        return self._terminated_at
+
+    @property
+    def executed_at(self):
+        return self._executed_at
+
+    @property
+    def is_done(self):
+        return self.status in TASK_DONE_STATES
+
+
+class Task(Base):
+    &#34;&#34;&#34; External task class &#34;&#34;&#34;
+
+    def __init__(
+        self,
+        title: str = None,
+        retries: int = 1,
+        tag: str = None,
+        timeout: int = None,
+        allow_failure: bool = False,
+        allow_rescheduling: bool = True,
+        when: str = Conditions.ON_SUCCESS,
+    ):
+        Base.__init__(
+            self,
+            _title=title,
+            _retries=retries,
+            _tag=tag,
+            _timeout=timeout,
+            _allow_failure=allow_failure,
+            _allow_rescheduling=allow_rescheduling,
+            _when=when,
+        )
+
+    @Base.title.setter  # pylint: disable=no-member
+    def title(self, title: str):
+        &#34;&#34;&#34; Sets task&#39;s title &#34;&#34;&#34;
+        self._title = title
+
+    @Base.retries.setter  # pylint: disable=no-member
+    def retries(self, retries: int):
+        &#34;&#34;&#34; Sets task&#39;s retries &#34;&#34;&#34;
+        self._retries = retries
+
+    @Base.tag.setter  # pylint: disable=no-member
+    def tag(self, tag: str):
+        &#34;&#34;&#34; Sets task&#39;s tag &#34;&#34;&#34;
+        self._tag = tag
+
+    @Base.timeout.setter  # pylint: disable=no-member
+    def timeout(self, timeout: int):
+        &#34;&#34;&#34; Sets task&#39;s timeout &#34;&#34;&#34;
+        self._timeout = timeout
+
+    @Base.allow_failure.setter  # pylint: disable=no-member
+    def allow_failure(self, allow_failure: bool):
+        &#34;&#34;&#34; Sets task&#39;s allow_failure flag &#34;&#34;&#34;
+        self._allow_failure = allow_failure
+
+    @Base.allow_rescheduling.setter  # pylint: disable=no-member
+    def allow_rescheduling(self, allow_rescheduling: bool):
+        &#34;&#34;&#34; Sets task&#39;s reschedule flag &#34;&#34;&#34;
+        self._allow_rescheduling = allow_rescheduling
+
+    @Base.when.setter  # pylint: disable=no-member
+    def when(self, when: Conditions):
+        &#34;&#34;&#34; Sets task&#39;s execution condition &#34;&#34;&#34;
+        self._when = when
+
+    def execute(self, func: callable, *args, **kwargs):
+        &#34;&#34;&#34; Sets task&#39;s workload &#34;&#34;&#34;
+        module = inspect.getmodule(func)
+        self._workload = pickle.dumps((func, args, kwargs))
+        self._workload_info[&#34;module_name&#34;] = module.__name__
+        self._workload_info[&#34;module_path&#34;] = getattr(module, &#34;__file__&#34;, None)
+
+        
+
+
+class TaskResult(Base):
+    &#34;&#34;&#34; Task result class &#34;&#34;&#34;
+
+    def __init__(self, task: Task):
+        super().__init__(**task.__dict__)
+
+    @property
+    def is_passed(self):
+        return self.status == TaskStatus.PASSED
+
+    @property
+    def is_failed(self):
+        return self.status in [
+            TaskStatus.FAILED,
+            TaskStatus.TIMEDOUT,
+            TaskStatus.ERRORED,
+            TaskStatus.TERMINATED,
+        ]
+
+
+class _Task(Base):
+    &#34;&#34;&#34; Internal task class &#34;&#34;&#34;
+
+    def __init__(self, task: Task):
+        super().__init__(**task.__dict__)
+        self.uid = task.uid or uuid.uuid4().hex[:10]
+        self.status = task.status or TaskStatus.CREATED
+        self.created_at = task.created_at or time.time()
+
+    @property
+    def tid(self):
+        return self._tid
+
+    @property
+    def workload_info(self):
+        return self._workload_info
+
+    @tid.setter
+    def tid(self, value):
+        self._tid = value
+
+    @Base.uid.setter  # pylint: disable=no-member
+    def uid(self, value):
+        self._uid = value
+
+    @Base.stage.setter  # pylint: disable=no-member
+    def stage(self, value):
+        self._stage = value
+
+    @Base.attempts.setter  # pylint: disable=no-member
+    def attempts(self, value):
+        self._attempts = value
+
+    @Base.rescheduleded.setter  # pylint: disable=no-member
+    def rescheduleded(self, value):
+        self._rescheduleded = value
+
+    @Base.result.setter  # pylint: disable=no-member
+    def result(self, value):
+        self._result = value
+
+    @Base.runner.setter  # pylint: disable=no-member
+    def runner(self, value):
+        self._runner = value
+
+    @Base.workflow.setter  # pylint: disable=no-member
+    def workflow(self, value):
+        self._workflow = value
+
+    @Base.status.setter  # pylint: disable=no-member
+    def status(self, value):
+        self._status = value
+
+    @Base.created_at.setter  # pylint: disable=no-member
+    def created_at(self, value):
+        self._created_at = value
+
+    @Base.queued_at.setter  # pylint: disable=no-member
+    def queued_at(self, value):
+        self._queued_at = value
+
+    @Base.started_at.setter  # pylint: disable=no-member
+    def started_at(self, value):
+        self._started_at = value
+
+    @Base.skipped_at.setter  # pylint: disable=no-member
+    def skipped_at(self, value):
+        self._skipped_at = value
+
+    @Base.terminated_at.setter  # pylint: disable=no-member
+    def terminated_at(self, value):
+        self._terminated_at = value
+
+    @Base.executed_at.setter  # pylint: disable=no-member
+    def executed_at(self, value):
+        self._executed_at = value
+
+    def queue(self, rctrl, pipeline=None):
+        self.status = TaskStatus.PENDING
+        self.queued_at = time.time()
+        self.save(rctrl, queue=True, pipeline=pipeline)
+
+    def skip(self, rctrl, pipeline=None):
+        self.status = TaskStatus.SKIPPED
+        self.skipped_at = time.time()
+        self.save(rctrl, pipeline=pipeline)
+
+    def reschedule(self, rctrl, pipeline=None):
+        self.runner = None
+        self.rescheduleded += 1
+        self.queue(rctrl, pipeline=pipeline)
+
+    def terminate(self, rctrl, pipeline):
+        self.status = TaskStatus.TERMINATED
+        self.terminated_at = time.time()
+        self.save(rctrl, pipeline=pipeline)
+
+    def save(self, rctrl, queue=False, notify=False, pipeline=None):
+        rctrl.task_save(self, notify=notify, queue=queue, pipeline=pipeline)
+
+
+class TaskSummary:
+    &#34;&#34;&#34; Task summary  &#34;&#34;&#34;
+
+    def __init__(self, task: (Task, _Task)):
+        self.uid = task.uid
+        self.title = task.title
+        self.status = task.status
+        self.stage = task.stage
+        self.allow_failure = task.allow_failure
+        self.allow_rescheduling = task.allow_rescheduling
+        self.rescheduleded = task.rescheduleded &gt; 1</code></pre>
+</details>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="taskue.task.Conditions"><code class="flex name class">
+<span>class <span class="ident">Conditions</span></span>
+<span>(</span><span>value, names=None, *, module=None, qualname=None, type=None, start=1)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Task execution conditions</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Conditions(str, Enum):
+    &#34;&#34;&#34; Task execution conditions &#34;&#34;&#34;
+
+    ALWAYS = &#34;always&#34;
+    ON_SUCCESS = &#34;on_success&#34;
+    ON_FAILURE = &#34;on_failure&#34;</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>builtins.str</li>
+<li>enum.Enum</li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="taskue.task.Conditions.ALWAYS"><code class="name">var <span class="ident">ALWAYS</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.task.Conditions.ON_FAILURE"><code class="name">var <span class="ident">ON_FAILURE</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.task.Conditions.ON_SUCCESS"><code class="name">var <span class="ident">ON_SUCCESS</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+<dt id="taskue.task.Task"><code class="flex name class">
+<span>class <span class="ident">Task</span></span>
+<span>(</span><span>title: str = None, retries: int = 1, tag: str = None, timeout: int = None, allow_failure: bool = False, allow_rescheduling: bool = True, when: str = Conditions.ON_SUCCESS)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>External task class</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Task(Base):
+    &#34;&#34;&#34; External task class &#34;&#34;&#34;
+
+    def __init__(
+        self,
+        title: str = None,
+        retries: int = 1,
+        tag: str = None,
+        timeout: int = None,
+        allow_failure: bool = False,
+        allow_rescheduling: bool = True,
+        when: str = Conditions.ON_SUCCESS,
+    ):
+        Base.__init__(
+            self,
+            _title=title,
+            _retries=retries,
+            _tag=tag,
+            _timeout=timeout,
+            _allow_failure=allow_failure,
+            _allow_rescheduling=allow_rescheduling,
+            _when=when,
+        )
+
+    @Base.title.setter  # pylint: disable=no-member
+    def title(self, title: str):
+        &#34;&#34;&#34; Sets task&#39;s title &#34;&#34;&#34;
+        self._title = title
+
+    @Base.retries.setter  # pylint: disable=no-member
+    def retries(self, retries: int):
+        &#34;&#34;&#34; Sets task&#39;s retries &#34;&#34;&#34;
+        self._retries = retries
+
+    @Base.tag.setter  # pylint: disable=no-member
+    def tag(self, tag: str):
+        &#34;&#34;&#34; Sets task&#39;s tag &#34;&#34;&#34;
+        self._tag = tag
+
+    @Base.timeout.setter  # pylint: disable=no-member
+    def timeout(self, timeout: int):
+        &#34;&#34;&#34; Sets task&#39;s timeout &#34;&#34;&#34;
+        self._timeout = timeout
+
+    @Base.allow_failure.setter  # pylint: disable=no-member
+    def allow_failure(self, allow_failure: bool):
+        &#34;&#34;&#34; Sets task&#39;s allow_failure flag &#34;&#34;&#34;
+        self._allow_failure = allow_failure
+
+    @Base.allow_rescheduling.setter  # pylint: disable=no-member
+    def allow_rescheduling(self, allow_rescheduling: bool):
+        &#34;&#34;&#34; Sets task&#39;s reschedule flag &#34;&#34;&#34;
+        self._allow_rescheduling = allow_rescheduling
+
+    @Base.when.setter  # pylint: disable=no-member
+    def when(self, when: Conditions):
+        &#34;&#34;&#34; Sets task&#39;s execution condition &#34;&#34;&#34;
+        self._when = when
+
+    def execute(self, func: callable, *args, **kwargs):
+        &#34;&#34;&#34; Sets task&#39;s workload &#34;&#34;&#34;
+        module = inspect.getmodule(func)
+        self._workload = pickle.dumps((func, args, kwargs))
+        self._workload_info[&#34;module_name&#34;] = module.__name__
+        self._workload_info[&#34;module_path&#34;] = getattr(module, &#34;__file__&#34;, None)</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>taskue.task.Base</li>
+</ul>
+<h3>Instance variables</h3>
+<dl>
+<dt id="taskue.task.Task.allow_failure"><code class="name">var <span class="ident">allow_failure</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def allow_failure(self):
+    return self._allow_failure</code></pre>
+</details>
+</dd>
+<dt id="taskue.task.Task.allow_rescheduling"><code class="name">var <span class="ident">allow_rescheduling</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def allow_rescheduling(self):
+    return self._allow_rescheduling</code></pre>
+</details>
+</dd>
+<dt id="taskue.task.Task.retries"><code class="name">var <span class="ident">retries</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def retries(self):
+    return self._retries</code></pre>
+</details>
+</dd>
+<dt id="taskue.task.Task.tag"><code class="name">var <span class="ident">tag</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def tag(self):
+    return self._tag</code></pre>
+</details>
+</dd>
+<dt id="taskue.task.Task.timeout"><code class="name">var <span class="ident">timeout</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def timeout(self):
+    return self._timeout</code></pre>
+</details>
+</dd>
+<dt id="taskue.task.Task.title"><code class="name">var <span class="ident">title</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def title(self):
+    return self._title</code></pre>
+</details>
+</dd>
+<dt id="taskue.task.Task.when"><code class="name">var <span class="ident">when</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def when(self):
+    return self._when</code></pre>
+</details>
+</dd>
+</dl>
+<h3>Methods</h3>
+<dl>
+<dt id="taskue.task.Task.execute"><code class="name flex">
+<span>def <span class="ident">execute</span></span>(<span>self, func: <built-in function callable>, *args, **kwargs)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Sets task's workload</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def execute(self, func: callable, *args, **kwargs):
+    &#34;&#34;&#34; Sets task&#39;s workload &#34;&#34;&#34;
+    module = inspect.getmodule(func)
+    self._workload = pickle.dumps((func, args, kwargs))
+    self._workload_info[&#34;module_name&#34;] = module.__name__
+    self._workload_info[&#34;module_path&#34;] = getattr(module, &#34;__file__&#34;, None)</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+<dt id="taskue.task.TaskResult"><code class="flex name class">
+<span>class <span class="ident">TaskResult</span></span>
+<span>(</span><span>task: <a title="taskue.task.Task" href="#taskue.task.Task">Task</a>)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Task result class</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class TaskResult(Base):
+    &#34;&#34;&#34; Task result class &#34;&#34;&#34;
+
+    def __init__(self, task: Task):
+        super().__init__(**task.__dict__)
+
+    @property
+    def is_passed(self):
+        return self.status == TaskStatus.PASSED
+
+    @property
+    def is_failed(self):
+        return self.status in [
+            TaskStatus.FAILED,
+            TaskStatus.TIMEDOUT,
+            TaskStatus.ERRORED,
+            TaskStatus.TERMINATED,
+        ]</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>taskue.task.Base</li>
+</ul>
+<h3>Instance variables</h3>
+<dl>
+<dt id="taskue.task.TaskResult.is_failed"><code class="name">var <span class="ident">is_failed</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def is_failed(self):
+    return self.status in [
+        TaskStatus.FAILED,
+        TaskStatus.TIMEDOUT,
+        TaskStatus.ERRORED,
+        TaskStatus.TERMINATED,
+    ]</code></pre>
+</details>
+</dd>
+<dt id="taskue.task.TaskResult.is_passed"><code class="name">var <span class="ident">is_passed</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def is_passed(self):
+    return self.status == TaskStatus.PASSED</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+<dt id="taskue.task.TaskStatus"><code class="flex name class">
+<span>class <span class="ident">TaskStatus</span></span>
+<span>(</span><span>value, names=None, *, module=None, qualname=None, type=None, start=1)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Task states</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class TaskStatus(str, Enum):
+    &#34;&#34;&#34; Task states &#34;&#34;&#34;
+
+    CREATED = &#34;created&#34;
+    PENDING = &#34;pending&#34;
+    RUNNING = &#34;running&#34;
+    PASSED = &#34;passed&#34;
+    FAILED = &#34;failed&#34;
+    TERMINATED = &#34;terminated&#34;
+    ERRORED = &#34;errored&#34;
+    SKIPPED = &#34;skipped&#34;
+    TIMEDOUT = &#34;timedout&#34;</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>builtins.str</li>
+<li>enum.Enum</li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="taskue.task.TaskStatus.CREATED"><code class="name">var <span class="ident">CREATED</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.task.TaskStatus.ERRORED"><code class="name">var <span class="ident">ERRORED</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.task.TaskStatus.FAILED"><code class="name">var <span class="ident">FAILED</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.task.TaskStatus.PASSED"><code class="name">var <span class="ident">PASSED</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.task.TaskStatus.PENDING"><code class="name">var <span class="ident">PENDING</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.task.TaskStatus.RUNNING"><code class="name">var <span class="ident">RUNNING</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.task.TaskStatus.SKIPPED"><code class="name">var <span class="ident">SKIPPED</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.task.TaskStatus.TERMINATED"><code class="name">var <span class="ident">TERMINATED</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="taskue.task.TaskStatus.TIMEDOUT"><code class="name">var <span class="ident">TIMEDOUT</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+<dt id="taskue.task.TaskSummary"><code class="flex name class">
+<span>class <span class="ident">TaskSummary</span></span>
+<span>(</span><span>task: (<class 'taskue.task.Task'>, <class 'taskue.task._Task'>))</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Task summary</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class TaskSummary:
+    &#34;&#34;&#34; Task summary  &#34;&#34;&#34;
+
+    def __init__(self, task: (Task, _Task)):
+        self.uid = task.uid
+        self.title = task.title
+        self.status = task.status
+        self.stage = task.stage
+        self.allow_failure = task.allow_failure
+        self.allow_rescheduling = task.allow_rescheduling
+        self.rescheduleded = task.rescheduleded &gt; 1</code></pre>
+</details>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<h1>Index</h1>
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="taskue" href="index.html">taskue</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="taskue.task.Conditions" href="#taskue.task.Conditions">Conditions</a></code></h4>
+<ul class="">
+<li><code><a title="taskue.task.Conditions.ALWAYS" href="#taskue.task.Conditions.ALWAYS">ALWAYS</a></code></li>
+<li><code><a title="taskue.task.Conditions.ON_FAILURE" href="#taskue.task.Conditions.ON_FAILURE">ON_FAILURE</a></code></li>
+<li><code><a title="taskue.task.Conditions.ON_SUCCESS" href="#taskue.task.Conditions.ON_SUCCESS">ON_SUCCESS</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="taskue.task.Task" href="#taskue.task.Task">Task</a></code></h4>
+<ul class="two-column">
+<li><code><a title="taskue.task.Task.allow_failure" href="#taskue.task.Task.allow_failure">allow_failure</a></code></li>
+<li><code><a title="taskue.task.Task.allow_rescheduling" href="#taskue.task.Task.allow_rescheduling">allow_rescheduling</a></code></li>
+<li><code><a title="taskue.task.Task.execute" href="#taskue.task.Task.execute">execute</a></code></li>
+<li><code><a title="taskue.task.Task.retries" href="#taskue.task.Task.retries">retries</a></code></li>
+<li><code><a title="taskue.task.Task.tag" href="#taskue.task.Task.tag">tag</a></code></li>
+<li><code><a title="taskue.task.Task.timeout" href="#taskue.task.Task.timeout">timeout</a></code></li>
+<li><code><a title="taskue.task.Task.title" href="#taskue.task.Task.title">title</a></code></li>
+<li><code><a title="taskue.task.Task.when" href="#taskue.task.Task.when">when</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="taskue.task.TaskResult" href="#taskue.task.TaskResult">TaskResult</a></code></h4>
+<ul class="">
+<li><code><a title="taskue.task.TaskResult.is_failed" href="#taskue.task.TaskResult.is_failed">is_failed</a></code></li>
+<li><code><a title="taskue.task.TaskResult.is_passed" href="#taskue.task.TaskResult.is_passed">is_passed</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="taskue.task.TaskStatus" href="#taskue.task.TaskStatus">TaskStatus</a></code></h4>
+<ul class="two-column">
+<li><code><a title="taskue.task.TaskStatus.CREATED" href="#taskue.task.TaskStatus.CREATED">CREATED</a></code></li>
+<li><code><a title="taskue.task.TaskStatus.ERRORED" href="#taskue.task.TaskStatus.ERRORED">ERRORED</a></code></li>
+<li><code><a title="taskue.task.TaskStatus.FAILED" href="#taskue.task.TaskStatus.FAILED">FAILED</a></code></li>
+<li><code><a title="taskue.task.TaskStatus.PASSED" href="#taskue.task.TaskStatus.PASSED">PASSED</a></code></li>
+<li><code><a title="taskue.task.TaskStatus.PENDING" href="#taskue.task.TaskStatus.PENDING">PENDING</a></code></li>
+<li><code><a title="taskue.task.TaskStatus.RUNNING" href="#taskue.task.TaskStatus.RUNNING">RUNNING</a></code></li>
+<li><code><a title="taskue.task.TaskStatus.SKIPPED" href="#taskue.task.TaskStatus.SKIPPED">SKIPPED</a></code></li>
+<li><code><a title="taskue.task.TaskStatus.TERMINATED" href="#taskue.task.TaskStatus.TERMINATED">TERMINATED</a></code></li>
+<li><code><a title="taskue.task.TaskStatus.TIMEDOUT" href="#taskue.task.TaskStatus.TIMEDOUT">TIMEDOUT</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="taskue.task.TaskSummary" href="#taskue.task.TaskSummary">TaskSummary</a></code></h4>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.8.1</a>.</p>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+<script>hljs.initHighlightingOnLoad()</script>
+</body>
+</html>
