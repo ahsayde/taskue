@@ -229,7 +229,7 @@ runner.start()
 - Runners periodically send heartbeat with timeout to prove they are still alive. 
 - Each runner monitors the other runners. If it find runner with expired heartbeat, it will mark the runner as **dead** and if the runner was busy with executing a task it will reschdule its task again if the task `allow_rescheduling` option is enabled.
 
-!> aaaaa
+!> **Important** 
 
 
 

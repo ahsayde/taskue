@@ -1,4 +1,5 @@
 from gevent import monkey
+
 monkey.patch_all()
 
 import unittest
@@ -6,6 +7,7 @@ from redis import Redis
 from taskue import Taskue
 from taskue.runner import TaskueRunner
 import gevent
+
 
 class BaseTestCase(unittest.TestCase):
     def __init__(self, *args, **kwargs):
@@ -18,7 +20,9 @@ class BaseTestCase(unittest.TestCase):
         self.redis.flushall()
         for i in range(3):
             runner_name = "runner-%s" % i
-            runner = TaskueRunner(self.redis, name=runner_name, queues=[runner_name])
+            runner = TaskueRunner(
+                self.redis, name=runner_name, queues=[runner_name], auto_load_modules=False
+            )
             self.runners[runner_name] = gevent.Greenlet.spawn(runner.start)
 
     def tearDown(self):

@@ -53,7 +53,7 @@ class TaskueRunner:
         namespace: str = "default",
         queues: list = None,
         timeout: int = 3600,
-        run_untagged_tasks: bool = False,
+        run_untagged_tasks: bool = True,
         auto_load_modules: bool = False,
     ):
         self.name = name or uuid4().hex[:10]

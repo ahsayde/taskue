@@ -47,7 +47,7 @@ class WorkflowTests(BaseTestCase):
         self.assertEqual(workflows[0].title, "workflow 0")
 
     @parameterized.expand([(2,), (4,)])
-    def test04_wait_for_workflow(self, name, timeout):
+    def test04_wait_for_workflow(self, timeout):
         task = Task()
         task.execute(time.sleep, 3)
         workflow_uid = self.cl.enqueue([[task]])
